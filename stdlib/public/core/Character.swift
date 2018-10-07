@@ -238,3 +238,9 @@ extension Character {
     return _str._guts.isSmall
   }
 }
+
+extension Character : ExpressibleByIntegerLiteral {
+  public init(integerLiteral value: Int) {
+    self.init(Unicode.Scalar(_value: UInt32(value)))
+  }
+}
