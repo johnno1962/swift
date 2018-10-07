@@ -761,7 +761,8 @@ static LiteralExpr *
 shallowCloneImpl(const IntegerLiteralExpr *E, ASTContext &Ctx,
                  llvm::function_ref<Type(const Expr *)> getType) {
   auto res = new (Ctx) IntegerLiteralExpr(E->getDigitsText(),
-                                          E->getSourceRange().End);
+                                          E->getSourceRange().End,
+                                          false, E->isCodepoint());
   if (E->isNegative())
     res->setNegative(E->getSourceRange().Start);
   return res;
@@ -964,7 +965,7 @@ llvm::APFloat FloatLiteralExpr::getValue() const {
 }
 
 StringLiteralExpr::StringLiteralExpr(StringRef Val, SourceRange Range,
-                                     bool Implicit)
+                                     bool Implicit, bool IsCharacterLiteral)
     : LiteralExpr(ExprKind::StringLiteral, Implicit), Val(Val),
       Range(Range) {
   Bits.StringLiteralExpr.Encoding = static_cast<unsigned>(UTF8);
@@ -972,6 +973,7 @@ StringLiteralExpr::StringLiteralExpr(StringRef Val, SourceRange Range,
       unicode::isSingleUnicodeScalar(Val);
   Bits.StringLiteralExpr.IsSingleExtendedGraphemeCluster =
       unicode::isSingleExtendedGraphemeCluster(Val);
+  Bits.StringLiteralExpr.IsCharacterLiteral = IsCharacterLiteral;
 }
 
 static ArrayRef<Identifier> getArgumentLabelsFromArgument(

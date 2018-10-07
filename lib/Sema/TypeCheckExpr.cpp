@@ -598,21 +598,37 @@ Type TypeChecker::getDefaultType(ProtocolDecl *protocol, DeclContext *dc) {
   Type *type = nullptr;
   const char *name = nullptr;
 
-  // ExpressibleByUnicodeScalarLiteral -> UnicodeScalarType
+  // LegacyExpressibleByUnicodeScalarLiteral -> UnicodeScalarType
   if (protocol ==
            getProtocol(
                SourceLoc(),
-               KnownProtocolKind::ExpressibleByUnicodeScalarLiteral)) {
+               KnownProtocolKind::LegacyExpressibleByUnicodeScalarLiteral)) {
     type = &UnicodeScalarType;
     name = "UnicodeScalarType";
   }
-  // ExpressibleByExtendedGraphemeClusterLiteral -> ExtendedGraphemeClusterType
+  // LegacyExpressibleByExtendedGraphemeClusterLiteral -> ExtendedGraphemeClusterType
   else if (protocol ==
            getProtocol(
                SourceLoc(),
-               KnownProtocolKind::ExpressibleByExtendedGraphemeClusterLiteral)) {
+               KnownProtocolKind::LegacyExpressibleByExtendedGraphemeClusterLiteral)) {
     type = &ExtendedGraphemeClusterType;
     name = "ExtendedGraphemeClusterType";
+  }
+  // ExpressibleByUnicodeScalarLiteral -> UnicodeScalarLiteralType
+  else if (protocol ==
+           getProtocol(
+               SourceLoc(),
+               KnownProtocolKind::ExpressibleByUnicodeScalarLiteral)) {
+    type = &UnicodeScalarLiteralType;
+    name = "UnicodeScalarLiteralType";
+  }
+  // ExpressibleByCharacterLiteral -> CharacterLiteralType
+  else if (protocol ==
+           getProtocol(
+               SourceLoc(),
+               KnownProtocolKind::ExpressibleByCharacterLiteral)) {
+    type = &CharacterLiteralType;
+    name = "CharacterLiteralType";
   }
   // ExpressibleByStringLiteral -> StringLiteralType
   // ExpressibleByStringInterpolation -> StringLiteralType

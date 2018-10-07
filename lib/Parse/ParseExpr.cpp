@@ -1451,12 +1451,23 @@ ParserResult<Expr> Parser::parseExprPrimary(Diag<> ID, bool isExprBasic) {
   SyntaxParsingContext ExprContext(SyntaxContext, SyntaxContextKind::Expr);
   switch (Tok.getKind()) {
   case tok::integer_literal: {
-    StringRef Text = copyAndStripUnderscores(Tok.getText());
+    StringRef Text = Tok.getText();;
+    bool IsCodepointLiteral = Text[0] == '\'';
+    if (IsCodepointLiteral) {
+      const char *CurPtr = Text.begin() + 1;
+      uint32_t Codepoint = L->lexCodepointLiteral(CurPtr, nullptr);
+      std::string Integer = std::to_string(Codepoint);
+      char *IntegerBuff = (char *)Context.Allocate(Integer.size() + 1, 1);
+      Text = StringRef(strcpy(IntegerBuff, Integer.c_str()), Integer.size());
+    }
+    else
+      Text = copyAndStripUnderscores(Text);
     SourceLoc Loc = consumeToken(tok::integer_literal);
     ExprContext.setCreateSyntax(SyntaxKind::IntegerLiteralExpr);
     return makeParserResult(new (Context)
                                 IntegerLiteralExpr(Text, Loc,
-                                                   /*Implicit=*/false));
+                                                   /*Implicit=*/false,
+                                                   IsCodepointLiteral));
   }
   case tok::floating_literal: {
     StringRef Text = copyAndStripUnderscores(Tok.getText());
@@ -1778,7 +1789,8 @@ static StringLiteralExpr *
 createStringLiteralExprFromSegment(ASTContext &Ctx,
                                    const Lexer *L,
                                    Lexer::StringSegment &Segment,
-                                   SourceLoc TokenLoc) {
+                                   SourceLoc TokenLoc,
+                                   bool IsCharacterLiteral = false) {
   assert(Segment.Kind == Lexer::StringSegment::Literal);
   // FIXME: Consider lazily encoding the string when needed.
   llvm::SmallString<256> Buf;
@@ -1788,7 +1800,8 @@ createStringLiteralExprFromSegment(ASTContext &Ctx,
            "Returned string is not from buffer?");
     EncodedStr = Ctx.AllocateCopy(EncodedStr);
   }
-  return new (Ctx) StringLiteralExpr(EncodedStr, TokenLoc);
+  return new (Ctx) StringLiteralExpr(EncodedStr, TokenLoc,
+                                     false, IsCharacterLiteral);
 }
 
 ParserStatus Parser::
@@ -2006,9 +2019,11 @@ ParserResult<Expr> Parser::parseExprStringLiteral() {
   // The simple case: just a single literal segment.
   if (Segments.size() == 1 &&
       Segments.front().Kind == Lexer::StringSegment::Literal) {
+    bool IsCharacterLiteral = EntireTok.getText()[0] == '\'';
     consumeToken();
     return makeParserResult(
-        createStringLiteralExprFromSegment(Context, L, Segments.front(), Loc));
+        createStringLiteralExprFromSegment(Context, L, Segments.front(), Loc,
+                                           IsCharacterLiteral));
   }
 
   // We are now sure this is a string interpolation expression.

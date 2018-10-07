@@ -1687,6 +1687,13 @@ extension ${Self} : _HasCustomAnyHashableRepresentation {
   }
 }
 
+extension ${Self}: ExpressibleByUnicodeScalarLiteral {
+  @_transparent
+  public init(unicodeScalarLiteral value: IntegerLiteralType) {
+    self.init(${Self}(value))
+  }
+}
+
 % for src_type in all_integer_types(word_bits):
 %   srcBits = src_type.bits
 %   srcSigned = src_type.is_signed

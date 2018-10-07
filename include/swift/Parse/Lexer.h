@@ -480,6 +480,8 @@ public:
     void operator=(const SILBodyRAII&) = delete;
   };
 
+  uint32_t lexCodepointLiteral(const char *&CurPtr, const char *TokStart);
+
 private:
   /// Nul character meaning kind.
   enum class NulCharacterKind {

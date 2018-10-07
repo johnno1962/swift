@@ -767,13 +767,13 @@ extension Substring : TextOutputStreamable {
   }
 }
 
-extension Substring : ExpressibleByUnicodeScalarLiteral {
+extension Substring : _LegacyExpressibleByUnicodeScalarLiteral {
   @inlinable
-  public init(unicodeScalarLiteral value: String) {
-     self.init(value)
+  public init(legacyUnicodeScalarLiteral value: String) {
+    self.init(value)
   }
 }
-extension Substring : ExpressibleByExtendedGraphemeClusterLiteral {
+extension Substring : _LegacyExpressibleByExtendedGraphemeClusterLiteral {
   @inlinable
   public init(extendedGraphemeClusterLiteral value: String) {
      self.init(value)

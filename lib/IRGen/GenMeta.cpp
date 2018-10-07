@@ -4029,13 +4029,15 @@ SpecialProtocol irgen::getSpecialProtocolID(ProtocolDecl *P) {
   case KnownProtocolKind::ExpressibleByArrayLiteral:
   case KnownProtocolKind::ExpressibleByBooleanLiteral:
   case KnownProtocolKind::ExpressibleByDictionaryLiteral:
-  case KnownProtocolKind::ExpressibleByExtendedGraphemeClusterLiteral:
+  case KnownProtocolKind::LegacyExpressibleByExtendedGraphemeClusterLiteral:
   case KnownProtocolKind::ExpressibleByFloatLiteral:
   case KnownProtocolKind::ExpressibleByIntegerLiteral:
+  case KnownProtocolKind::ExpressibleByCharacterLiteral:
   case KnownProtocolKind::ExpressibleByStringInterpolation:
   case KnownProtocolKind::ExpressibleByStringLiteral:
   case KnownProtocolKind::ExpressibleByNilLiteral:
   case KnownProtocolKind::ExpressibleByUnicodeScalarLiteral:
+  case KnownProtocolKind::LegacyExpressibleByUnicodeScalarLiteral:
   case KnownProtocolKind::ExpressibleByColorLiteral:
   case KnownProtocolKind::ExpressibleByImageLiteral:
   case KnownProtocolKind::ExpressibleByFileReferenceLiteral:
