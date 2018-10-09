@@ -239,8 +239,8 @@ extension Character {
   }
 }
 
-extension Character : ExpressibleByIntegerLiteral {
-  public init(integerLiteral value: Int) {
+extension Character : ExpressibleByCodepointLiteral {
+  public init(codepointLiteral value: IntegerLiteralType) {
     self.init(Unicode.Scalar(_value: UInt32(value)))
   }
 }
