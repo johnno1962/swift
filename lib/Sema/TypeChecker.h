@@ -299,6 +299,8 @@ enum class NameLookupFlags {
   /// Whether to include results from outside the innermost scope that has a
   /// result.
   IncludeOuterResults = 0x20,
+  /// Whether to consider synonyms declared through @_implements().
+  IncludeAttributeImplements = 0x40,
 };
 
 /// A set of options that control name lookup.
@@ -653,6 +655,7 @@ private:
   Type BooleanLiteralType;
   Type UnicodeScalarType;
   Type ExtendedGraphemeClusterType;
+  Type CodepointLiteralType;
   Type StringLiteralType;
   Type ArrayLiteralType;
   Type DictionaryLiteralType;
@@ -723,9 +726,16 @@ private:
   /// \returns NULL if the constructed expression does not typecheck.
   Expr* constructCallToSuperInit(ConstructorDecl *ctor, ClassDecl *ClDecl);
 
+  TypeChecker(ASTContext &Ctx);
+  friend class ASTContext;
+
 public:
-  TypeChecker(ASTContext &Ctx) : TypeChecker(Ctx, Ctx.Diags) { }
-  TypeChecker(ASTContext &Ctx, DiagnosticEngine &Diags);
+  /// Create a new type checker instance for the given ASTContext, if it
+  /// doesn't already have one.
+  ///
+  /// \returns a reference to the type vchecker.
+  static TypeChecker &createForContext(ASTContext &ctx);
+
   TypeChecker(const TypeChecker&) = delete;
   TypeChecker& operator=(const TypeChecker&) = delete;
   ~TypeChecker();
@@ -977,15 +987,6 @@ public:
   ///
   /// \returns true if \c t1 is a subtype of \c t2.
   bool isSubtypeOf(Type t1, Type t2, DeclContext *dc);
-
-  /// \brief Determine whether one type is a subclass of another.
-  ///
-  /// \param t1 The potential subtype.
-  /// \param t2 The potential supertype.
-  /// \param dc The context of the check.
-  ///
-  /// \returns true if \c t1 is a subtype of \c t2.
-  bool isSubclassOf(Type t1, Type t2, DeclContext *dc);
   
   /// \brief Determine whether one type is implicitly convertible to another.
   ///
@@ -1105,8 +1106,6 @@ public:
   virtual void resolveProtocolEnvironment(ProtocolDecl *proto) override {
     validateDecl(proto);
   }
-
-  virtual void bindExtension(ExtensionDecl *ext) override;
 
   virtual void resolveExtension(ExtensionDecl *ext) override {
     validateExtension(ext);
@@ -2172,26 +2171,6 @@ public:
 bool isAcceptableDynamicMemberLookupSubscript(SubscriptDecl *decl,
                                               DeclContext *DC,
                                               TypeChecker &TC);
-
-/// Determine whether this is a "pass-through" typealias, which has the
-/// same type parameters as the nominal type it references and specializes
-/// the underlying nominal type with exactly those type parameters.
-/// For example, the following typealias \c GX is a pass-through typealias:
-///
-/// \code
-/// struct X<T, U> { }
-/// typealias GX<A, B> = X<A, B>
-/// \endcode
-///
-/// whereas \c GX2 and \c GX3 are not pass-through because \c GX2 has
-/// different type parameters and \c GX3 doesn't pass its type parameters
-/// directly through.
-///
-/// \code
-/// typealias GX2<A> = X<A, A>
-/// typealias GX3<A, B> = X<B, A>
-/// \endcode
-bool isPassThroughTypealias(TypeAliasDecl *typealias);
 
 /// Whether an overriding declaration requires the 'override' keyword.
 enum class OverrideRequiresKeyword {

@@ -561,6 +561,8 @@ public:
       return {DeclBaseName::Kind::Subscript, StringRef()};
     case static_cast<uint8_t>(DeclNameKind::Destructor):
       return {DeclBaseName::Kind::Destructor, StringRef()};
+    case static_cast<uint8_t>(DeclNameKind::Constructor):
+      return {DeclBaseName::Kind::Constructor, StringRef()};
     default:
       llvm_unreachable("Unknown DeclNameKind");
     }
@@ -1360,7 +1362,8 @@ Status ModuleFile::associateWithFileContext(FileUnit *file,
   assert(!FileContext && "already associated with an AST module");
   FileContext = file;
 
-  if (file->getParentModule()->getName().str() != Name)
+  ModuleDecl *M = file->getParentModule();
+  if (M->getName().str() != Name)
     return error(Status::NameMismatch);
 
   ASTContext &ctx = getContext();
@@ -1371,6 +1374,7 @@ Status ModuleFile::associateWithFileContext(FileUnit *file,
     return error(Status::TargetIncompatible);
   }
   if (ctx.LangOpts.EnableTargetOSChecking &&
+      M->getResilienceStrategy() != ResilienceStrategy::Resilient &&
       isTargetTooNew(moduleTarget, ctx.LangOpts.Target)) {
     return error(Status::TargetTooNew);
   }
@@ -1999,6 +2003,17 @@ void ModuleFile::getTopLevelDecls(SmallVectorImpl<Decl *> &results) {
       continue;
     }
     results.push_back(declOrError.get());
+  }
+}
+
+void ModuleFile::getPrecedenceGroups(
+       SmallVectorImpl<PrecedenceGroupDecl*> &results) {
+  PrettyStackTraceModuleFile stackEntry(*this);
+  if (PrecedenceGroupDecls) {
+    for (auto entry : PrecedenceGroupDecls->data()) {
+      for (auto item : entry)
+        results.push_back(cast<PrecedenceGroupDecl>(getDecl(item.second)));
+    }
   }
 }
 

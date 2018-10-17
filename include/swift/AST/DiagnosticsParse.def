@@ -1,3 +1,4 @@
+
 //===--- DiagnosticsParse.def - Diagnostics Text ----------------*- C++ -*-===//
 //
 // This source file is part of the Swift.org open source project
@@ -114,6 +115,14 @@ ERROR(lex_unprintable_ascii_character,none,
       "unprintable ASCII character found in source file", ())
 ERROR(lex_invalid_utf8,none,
       "invalid UTF-8 found in source file", ())
+ERROR(lex_character_empty,none,
+       "empty character literal", ())
+ERROR(lex_character_invalid_escape,none,
+       "invalid escape in character literal", ())
+ERROR(lex_character_not_codepoint,none,
+       "character not expressible as a single codepoint", ())
+ERROR(lex_character_not_cluster,none,
+       "character literal is not single extended grapheme cluster", ())
 ERROR(lex_single_quote_string,none,
       "single-quoted string literal found, use '\"'", ())
 ERROR(lex_invalid_curly_quote,none,
@@ -431,8 +440,10 @@ ERROR(deprecated_operator_body_use_group,PointsToFirstBadToken,
 ERROR(operator_decl_no_fixity,none,
       "operator must be declared as 'prefix', 'postfix', or 'infix'", ())
 
+ERROR(operator_decl_expected_type,none,
+      "expected designated type in operator declaration", ())
 ERROR(operator_decl_trailing_comma,none,
-      "expected designated protocol in operator declaration", ())
+      "trailing comma in operator declaration", ())
 
 // PrecedenceGroup
 ERROR(precedencegroup_not_infix,none,
@@ -1480,9 +1491,6 @@ ERROR(where_without_generic_params,none,
       "'where' clause cannot be attached to "
       "%select{a non-generic|a protocol|an associated type}0 "
       "declaration", (unsigned))
-WARNING(swift3_where_inside_brackets,none,
-        "'where' clause next to generic parameters is deprecated "
-        "and will be removed in the future version of Swift", ())
 ERROR(where_inside_brackets,none,
         "'where' clause next to generic parameters is obsolete, "
         "must be written following the declaration's type", ())

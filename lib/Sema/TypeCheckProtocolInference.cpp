@@ -183,15 +183,19 @@ AssociatedTypeInference::inferTypeWitnessesViaValueWitnesses(
     if (extension == conformanceExtension)
       return true;
 
-    tc.bindExtension(extension);
+    auto *extendedNominal = extension->getExtendedNominal();
+
+    // Invalid case.
+    if (extendedNominal == nullptr)
+      return true;
 
     // Assume unconstrained concrete extensions we found witnesses in are
     // always viable.
-    if (!extension->getExtendedType()->isAnyExistentialType()) {
-      // TODO: When constrained extensions are a thing, we'll need an "is
-      // as specialized as" kind of check here.
+    if (!isa<ProtocolDecl>(extendedNominal))
       return !extension->isConstrainedExtension();
-    }
+
+    // Build a generic signature.
+    tc.validateExtension(extension);
 
     // The extension may not have a generic signature set up yet, as a
     // recursion breaker, in which case we can't yet confidently reject its
@@ -413,6 +417,8 @@ AssociatedTypeInference::inferTypeWitnessesViaValueWitnesses(
   for (auto member : proto->getMembers()) {
     auto req = dyn_cast<ValueDecl>(member);
     if (!req)
+      continue;
+    if (!req->isProtocolRequirement())
       continue;
 
     // Infer type witnesses for associated types.
@@ -774,11 +780,11 @@ AssociatedTypeDecl *AssociatedTypeInference::findDefaultedAssociatedType(
     if (!overriddenDefault) continue;
 
     Type overriddenType =
-      overriddenDefault->getDefaultDefinitionLoc().getType();
+      overriddenDefault->getDefaultDefinitionType();
     assert(overriddenType);
     if (!overriddenType) continue;
 
-    CanType key = overriddenType->mapTypeOutOfContext()->getCanonicalType();
+    CanType key = overriddenType->getCanonicalType();
     if (canonicalTypes.insert(key).second)
       results.push_back(overriddenDefault);
   }
@@ -850,20 +856,14 @@ Type AssociatedTypeInference::computeDefaultTypeWitness(
     }
   }
 
-  Type defaultType = defaultedAssocType->getDefaultDefinitionLoc().getType();
+  Type defaultType = defaultedAssocType->getDefaultDefinitionType();
 
   // FIXME: Circularity
   if (!defaultType)
     return Type();
 
-  // If the associated type came from a different protocol, map it into our
-  // protocol's context.
-  if (defaultedAssocType->getDeclContext() != proto) {
-    defaultType = defaultType->mapTypeOutOfContext();
-    defaultType = proto->mapTypeIntoContext(defaultType);
-    if (!defaultType) return Type();
-  }
-
+  // Map it into our protocol's context.
+  defaultType = proto->mapTypeIntoContext(defaultType);
   defaultType = defaultType.subst(
                           QueryTypeSubstitutionMap{substitutions},
                           LookUpConformanceInModule(dc->getParentModule()));
@@ -1078,9 +1078,10 @@ AssociatedTypeInference::getSubstOptionsWithCurrentTypeWitnesses() {
         // Find an associated type with the same name in the given
         // protocol.
         AssociatedTypeDecl *foundAssocType = nullptr;
+        auto flags = OptionSet<NominalTypeDecl::LookupDirectFlags>();
+        flags |= NominalTypeDecl::LookupDirectFlags::IgnoreNewExtensions;
         for (auto result : thisProto->lookupDirect(
-                                             assocType->getName(),
-                                             /*ignoreNewExtensions=*/true)) {
+                                             assocType->getName(), flags)) {
           foundAssocType = dyn_cast<AssociatedTypeDecl>(result);
           if (foundAssocType) break;
         }
@@ -1120,7 +1121,7 @@ bool AssociatedTypeInference::checkCurrentTypeWitnesses(
   auto result =
     tc.checkGenericArguments(dc, SourceLoc(), SourceLoc(),
                              typeInContext,
-                             { Type(proto->getProtocolSelfType()) },
+                             { proto->getSelfInterfaceType() },
                              sanitizedRequirements,
                              QuerySubstitutionMap{substitutions},
                              TypeChecker::LookUpConformance(dc),
@@ -1556,7 +1557,7 @@ compareDeclsForInference(TypeChecker &TC, DeclContext *DC,
     if (!t2)
       return true;
 
-    return TC.isSubclassOf(t1, t2, DC);
+    return t2->isExactSuperclassOf(t1);
   };
 
   bool protos1AreSubsetOf2 = protos1.empty();

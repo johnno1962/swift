@@ -938,7 +938,7 @@ extension Sequence where Element: StringProtocol {
 // This overload is necessary because String now conforms to
 // BidirectionalCollection, and there are other `joined` overloads that are
 // considered more specific. See Flatten.swift.gyb.
-extension BidirectionalCollection where Iterator.Element == String {
+extension BidirectionalCollection where Element == String {
   /// Returns a new string by concatenating the elements of the sequence,
   /// adding the given separator between each element.
   ///
@@ -1155,5 +1155,11 @@ extension String : CustomStringConvertible {
   @inlinable // FIXME(sil-serialize-all)
   public var description: String {
     return self
+  }
+}
+
+extension String : ExpressibleByCodepointLiteral {
+  public init(codepointLiteral value: UInt32) {
+    self.init(Unicode.Scalar(_value: value))
   }
 }

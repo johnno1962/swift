@@ -99,6 +99,12 @@ void TBDGenVisitor::addAssociatedTypeDescriptor(AssociatedTypeDecl *assocType) {
   addSymbol(entity);
 }
 
+void TBDGenVisitor::addAssociatedConformanceDescriptor(
+                                           AssociatedConformance conformance) {
+  auto entity = LinkEntity::forAssociatedConformanceDescriptor(conformance);
+  addSymbol(entity);
+}
+
 void TBDGenVisitor::addConformances(DeclContext *DC) {
   for (auto conformance : DC->getLocalConformances()) {
     auto protocol = conformance->getProtocol();
@@ -409,6 +415,21 @@ void TBDGenVisitor::visitProtocolDecl(ProtocolDecl *PD) {
     if (protocolDescriptorHasRequirements(PD))
       addProtocolRequirementsBaseDescriptor(PD);
 
+    for (const auto &req : PD->getRequirementSignature()) {
+      if (req.getKind() != RequirementKind::Conformance)
+        continue;
+
+      // Skip inherited requirements.
+      if (req.getFirstType()->isEqual(PD->getSelfInterfaceType()))
+        continue;
+
+      AssociatedConformance conformance(
+        PD,
+        req.getFirstType()->getCanonicalType(),
+        req.getSecondType()->castTo<ProtocolType>()->getDecl());
+      addAssociatedConformanceDescriptor(conformance);
+    }
+
     for (auto *member : PD->getMembers()) {
       if (PD->isResilient()) {
         if (auto *funcDecl = dyn_cast<AbstractFunctionDecl>(member)) {
@@ -419,7 +440,8 @@ void TBDGenVisitor::visitProtocolDecl(ProtocolDecl *PD) {
         }
       }
 
-      // Always produce associated type descriptors.
+      // Always produce associated type descriptors, because they can
+      // be referenced by generic signatures.
       if (auto *assocType = dyn_cast<AssociatedTypeDecl>(member)) {
         if (assocType->getOverriddenDecls().empty())
           addAssociatedTypeDescriptor(assocType);

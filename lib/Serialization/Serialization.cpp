@@ -1595,18 +1595,21 @@ void Serializer::writeNormalConformance(
       // If there is no witness, we're done.
       if (!witness.getDecl()) return;
 
-      if (auto *genericEnv = witness.getSyntheticEnvironment()) {
-        // Generic signature.
-        auto *genericSig = genericEnv->getGenericSignature();
-        data.push_back(addGenericSignatureRef(genericSig));
-      } else {
-        data.push_back(/*null generic signature*/0);
-      }
+      auto subs = witness.getSubstitutions();
 
-      data.push_back(
-        addSubstitutionMapRef(witness.getRequirementToSyntheticSubs()));
-      data.push_back(
-        addSubstitutionMapRef(witness.getSubstitutions()));
+      // Canonicalize away typealiases, since these substitutions aren't used
+      // for diagnostics and we reference fewer declarations that way.
+      subs = subs.getCanonical();
+
+      // Map archetypes to type parameters, since we always substitute them
+      // away. Note that in a merge-modules pass, we're serializing conformances
+      // that we deserialized, so they will already have their replacement types
+      // in terms of interface types; hence the hasArchetypes() check is
+      // necessary for correctness, not just as a fast path.
+      if (subs.hasArchetypes())
+        subs = subs.mapReplacementTypesOutOfContext();
+
+      data.push_back(addSubstitutionMapRef(subs));
   });
 
   unsigned numSignatureConformances =
@@ -1808,6 +1811,16 @@ void Serializer::writeMembers(DeclID parentID,
           !VD->getBaseName().empty()) {
         std::unique_ptr<DeclMembersTable> &memberTable =
           DeclMemberNames[VD->getBaseName()].second;
+        if (!memberTable) {
+          memberTable = llvm::make_unique<DeclMembersTable>();
+        }
+        (*memberTable)[parentID].push_back(memberID);
+      }
+
+      // Same as above, but for @_implements attributes
+      if (auto A = VD->getAttrs().getAttribute<ImplementsAttr>()) {
+        std::unique_ptr<DeclMembersTable> &memberTable =
+          DeclMemberNames[A->getMemberName().getBaseName()].second;
         if (!memberTable) {
           memberTable = llvm::make_unique<DeclMembersTable>();
         }
@@ -2425,9 +2438,19 @@ void Serializer::writePatternBindingInitializer(PatternBindingDecl *binding,
                                                 unsigned bindingIndex) {
   using namespace decls_block;
   auto abbrCode = DeclTypeAbbrCodes[PatternBindingInitializerLayout::Code];
+
+  StringRef initStr;
+  SmallString<128> scratch;
+  auto &entry = binding->getPatternList()[bindingIndex];
+  auto varDecl = entry.getAnchoringVarDecl();
+  if (entry.hasInitStringRepresentation() &&
+      varDecl->isInitExposedToClients()) {
+    initStr = entry.getInitStringRepresentation(scratch);
+  }
+
   PatternBindingInitializerLayout::emitRecord(Out, ScratchRecord,
                                               abbrCode, addDeclRef(binding),
-                                              bindingIndex);
+                                              bindingIndex, initStr);
 }
 
 void
@@ -2704,6 +2727,7 @@ void Serializer::writeDecl(const Decl *D) {
     auto contextID = addDeclContextRef(extension->getDeclContext());
     Type baseTy = extension->getExtendedType();
     assert(!baseTy->hasUnboundGenericType());
+    assert(!baseTy->hasArchetype());
 
     // FIXME: Use the canonical type here in order to minimize circularity
     // issues at deserialization time. A known problematic case here is
@@ -2854,11 +2878,14 @@ void Serializer::writeDecl(const Decl *D) {
     auto contextID = addDeclContextRef(op->getDeclContext());
     auto nameID = addDeclBaseNameRef(op->getName());
     auto groupID = addDeclRef(op->getPrecedenceGroup());
-    auto protoID = addDeclRef(op->getDesignatedProtocol());
+    SmallVector<DeclID, 1> designatedNominalTypeDeclIDs;
+    for (auto *decl : op->getDesignatedNominalTypes())
+      designatedNominalTypeDeclIDs.push_back(addDeclRef(decl));
 
     unsigned abbrCode = DeclTypeAbbrCodes[InfixOperatorLayout::Code];
     InfixOperatorLayout::emitRecord(Out, ScratchRecord, abbrCode, nameID,
-                                    contextID, groupID, protoID);
+                                    contextID, groupID,
+                                    designatedNominalTypeDeclIDs);
     break;
   }
 
@@ -2867,12 +2894,14 @@ void Serializer::writeDecl(const Decl *D) {
     verifyAttrSerializable(op);
 
     auto contextID = addDeclContextRef(op->getDeclContext());
-    auto protoID = addDeclRef(op->getDesignatedProtocol());
+    SmallVector<DeclID, 1> designatedNominalTypeDeclIDs;
+    for (auto *decl : op->getDesignatedNominalTypes())
+      designatedNominalTypeDeclIDs.push_back(addDeclRef(decl));
 
     unsigned abbrCode = DeclTypeAbbrCodes[PrefixOperatorLayout::Code];
     PrefixOperatorLayout::emitRecord(Out, ScratchRecord, abbrCode,
                                      addDeclBaseNameRef(op->getName()),
-                                     contextID, protoID);
+                                     contextID, designatedNominalTypeDeclIDs);
     break;
   }
 
@@ -2881,12 +2910,14 @@ void Serializer::writeDecl(const Decl *D) {
     verifyAttrSerializable(op);
 
     auto contextID = addDeclContextRef(op->getDeclContext());
-    auto protoID = addDeclRef(op->getDesignatedProtocol());
+    SmallVector<DeclID, 1> designatedNominalTypeDeclIDs;
+    for (auto *decl : op->getDesignatedNominalTypes())
+      designatedNominalTypeDeclIDs.push_back(addDeclRef(decl));
 
     unsigned abbrCode = DeclTypeAbbrCodes[PostfixOperatorLayout::Code];
     PostfixOperatorLayout::emitRecord(Out, ScratchRecord, abbrCode,
                                       addDeclBaseNameRef(op->getName()),
-                                      contextID, protoID);
+                                      contextID, designatedNominalTypeDeclIDs);
     break;
   }
 

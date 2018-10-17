@@ -535,7 +535,7 @@ getNormalInvocationArguments(std::vector<std::string> &invocationArgStrs,
     // using Glibc or a libc that respects that flag. This will cause some
     // source breakage however (specifically with strerror_r()) on Linux
     // without a workaround.
-    if (triple.isOSFuchsia()) {
+    if (triple.isOSFuchsia() || triple.isAndroid()) {
       // Many of the modern libc features are hidden behind feature macros like
       // _GNU_SOURCE or _XOPEN_SOURCE.
       invocationArgStrs.insert(invocationArgStrs.end(), {
@@ -2634,7 +2634,9 @@ ClangModuleUnit::lookupNestedType(Identifier name,
       isa<StructDecl>(baseType) && !baseType->hasLazyMembers() &&
       baseType->isChildContextOf(this)) {
     auto *mutableBase = const_cast<NominalTypeDecl *>(baseType);
-    auto codeEnum = mutableBase->lookupDirect(name,/*ignoreNewExtensions*/true);
+    auto flags = OptionSet<NominalTypeDecl::LookupDirectFlags>();
+    flags |= NominalTypeDecl::LookupDirectFlags::IgnoreNewExtensions;
+    auto codeEnum = mutableBase->lookupDirect(name, flags);
     // Double-check that we actually have a good result. It's possible what we
     // found is /not/ a synthesized error struct, but just something that looks
     // like it. But if we still found a good result we should return that.

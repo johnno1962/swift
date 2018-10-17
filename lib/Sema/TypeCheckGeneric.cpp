@@ -263,9 +263,7 @@ void TypeChecker::checkProtocolSelfRequirements(ValueDecl *decl) {
         continue;
 
       diagnose(decl,
-               Context.isSwiftVersion3()
-                 ? diag::requirement_restricts_self_swift3
-                 : diag::requirement_restricts_self,
+               diag::requirement_restricts_self,
                decl->getDescriptiveKind(), decl->getFullName(),
                req.getFirstType().getString(),
                static_cast<unsigned>(req.getKind()),
@@ -321,7 +319,7 @@ void TypeChecker::checkReferencedGenericParams(GenericContext *dc) {
   ReferencedGenericTypeWalker paramsAndResultWalker;
   auto *funcTy = decl->getInterfaceType()->castTo<GenericFunctionType>();
   for (const auto &param : funcTy->getParams())
-    param.getType().walk(paramsAndResultWalker);
+    param.getOldType().walk(paramsAndResultWalker);
   funcTy->getResult().walk(paramsAndResultWalker);
 
   // Set of generic params referenced in parameter types,
@@ -933,9 +931,7 @@ RequirementCheckResult TypeChecker::checkGenericArguments(
 
       case RequirementKind::Superclass: {
         // Superclass requirements.
-        // FIXME: Don't use the type checker instance here?
-        TypeChecker &tc = static_cast<TypeChecker &>(*ctx.getLazyResolver());
-        if (!tc.isSubclassOf(firstType, secondType, dc)) {
+        if (!secondType->isExactSuperclassOf(firstType)) {
           diagnostic = diag::type_does_not_inherit;
           diagnosticNote = diag::type_does_not_inherit_or_conform_requirement;
           requirementFailure = true;

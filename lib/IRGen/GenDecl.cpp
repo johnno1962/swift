@@ -467,13 +467,13 @@ public:
 } // end anonymous namespace
 
 /// Emit all the top-level code in the source file.
-void IRGenModule::emitSourceFile(SourceFile &SF, unsigned StartElem) {
+void IRGenModule::emitSourceFile(SourceFile &SF) {
   PrettySourceFileEmission StackEntry(SF);
   llvm::SaveAndRestore<SourceFile *> SetCurSourceFile(CurSourceFile, &SF);
 
   // Emit types and other global decls.
-  for (unsigned i = StartElem, e = SF.Decls.size(); i != e; ++i)
-    emitGlobalDecl(SF.Decls[i]);
+  for (auto *decl : SF.Decls)
+    emitGlobalDecl(decl);
   for (auto *localDecl : SF.LocalTypeDecls)
     emitGlobalDecl(localDecl);
 
@@ -680,10 +680,7 @@ void IRGenModule::emitRuntimeRegistration() {
   }
 
   // Register Swift protocol conformances if we added any.
-  if (!ProtocolConformances.empty()) {
-
-    llvm::Constant *conformances = emitProtocolConformances();
-
+  if (llvm::Constant *conformances = emitProtocolConformances()) {
     llvm::Constant *beginIndices[] = {
       llvm::ConstantInt::get(Int32Ty, 0),
       llvm::ConstantInt::get(Int32Ty, 0),
@@ -1739,6 +1736,7 @@ Address IRGenModule::getAddrOfSILGlobalVariable(SILGlobalVariable *var,
   ResilienceExpansion expansion = getResilienceExpansionForLayout(var);
 
   llvm::Type *storageType;
+  llvm::Type *castStorageToType = nullptr;
   Size fixedSize;
   Alignment fixedAlignment;
   bool inFixedBuffer = false;
@@ -1768,6 +1766,7 @@ Address IRGenModule::getAddrOfSILGlobalVariable(SILGlobalVariable *var,
     storageType = Layout->getType();
     fixedSize = Layout->getSize();
     fixedAlignment = Layout->getAlignment();
+    castStorageToType = cast<FixedTypeInfo>(ti).getStorageType();
     assert(fixedAlignment >= TargetInfo.HeapObjectAlignment);
   } else if (isREPLVar || ti.isFixedSize(expansion)) {
     // Allocate static storage.
@@ -1789,7 +1788,7 @@ Address IRGenModule::getAddrOfSILGlobalVariable(SILGlobalVariable *var,
     // FIXME: Once lldb can make use of remote mirrors to calculate layouts
     // at runtime, this should be removed.
     {
-      CompletelyFragileScope Scope(*this);
+      LoweringModeScope Scope(*this, TypeConverter::Mode::CompletelyFragile);
 
       SILType loweredTy = var->getLoweredType();
       auto &nonResilientTI = cast<FixedTypeInfo>(getTypeInfo(loweredTy));
@@ -1863,7 +1862,9 @@ Address IRGenModule::getAddrOfSILGlobalVariable(SILGlobalVariable *var,
     // to a reference to it).
     addr = llvm::ConstantExpr::getGetElementPtr(nullptr, gvar, Indices);
   }
-  addr = llvm::ConstantExpr::getBitCast(addr, storageType->getPointerTo());
+  addr = llvm::ConstantExpr::getBitCast(
+      addr,
+      castStorageToType ? castStorageToType : storageType->getPointerTo());
   return Address(addr, Alignment(gvar->getAlignment()));
 }
 
@@ -2449,155 +2450,39 @@ llvm::Constant *IRGenModule::emitSwiftProtocols() {
   return var;
 }
 
-namespace {
-  /// Builds a protocol conformance descriptor.
-  class ProtocolConformanceDescriptorBuilder {
-    IRGenModule &IGM;
-    ConstantStructBuilder &B;
-    const NormalProtocolConformance *Conformance;
-    ConformanceFlags Flags;
-
-  public:
-    ProtocolConformanceDescriptorBuilder(
-                                 IRGenModule &IGM,
-                                 ConstantStructBuilder &B,
-                                 const NormalProtocolConformance *conformance)
-    : IGM(IGM), B(B), Conformance(conformance) { }
-
-    void layout() {
-      addProtocol();
-      addConformingType();
-      addWitnessTable();
-      addFlags();
-      addContext();
-      addConditionalRequirements();
-
-      B.suggestType(IGM.ProtocolConformanceDescriptorTy);
-    }
-
-    void addProtocol() {
-      // Relative reference to the protocol descriptor.
-      auto protocol = Conformance->getProtocol();
-      auto descriptorRef = IGM.getAddrOfLLVMVariableOrGOTEquivalent(
-                    LinkEntity::forProtocolDescriptor(protocol),
-                    IGM.getPointerAlignment(), IGM.ProtocolDescriptorStructTy);
-      B.addRelativeAddress(descriptorRef);
-    }
-
-    void addConformingType() {
-      // Add a relative reference to the type, with the type reference
-      // kind stored in the flags.
-      auto ref =
-        IGM.getTypeEntityReference(Conformance->getType()->getAnyNominal());
-      B.addRelativeAddress(ref.getValue());
-      Flags = Flags.withTypeReferenceKind(ref.getKind());
-    }
-
-    void addWitnessTable() {
-      using ConformanceKind = ConformanceFlags::ConformanceKind;
-
-      // Figure out what kind of witness table we have.
-      llvm::Constant *witnessTableVar;
-
-      if (Conformance->getConditionalRequirements().empty()) {
-        if (!isDependentConformance(Conformance) &&
-            !Conformance->isSynthesizedNonUnique()) {
-          Flags = Flags.withConformanceKind(ConformanceKind::WitnessTable);
-          witnessTableVar = IGM.getAddrOfWitnessTable(Conformance);
-        } else {
-          Flags = Flags.withConformanceKind(
-                                        ConformanceKind::WitnessTableAccessor);
-          witnessTableVar = IGM.getAddrOfWitnessTableAccessFunction(
-              Conformance, ForDefinition);
-        }
-      } else {
-        Flags =
-          Flags.withConformanceKind(
-              ConformanceKind::ConditionalWitnessTableAccessor)
-            .withNumConditionalRequirements(
-              Conformance->getConditionalRequirements().size());
-
-        witnessTableVar = IGM.getAddrOfWitnessTableAccessFunction(
-          Conformance, ForDefinition);
-      }
-
-      // Relative reference to the witness table.
-      auto witnessTableRef =
-        ConstantReference(witnessTableVar, ConstantReference::Direct);
-      B.addRelativeAddress(witnessTableRef);
-    }
-
-    void addFlags() {
-      // Miscellaneous flags.
-      Flags = Flags.withIsRetroactive(Conformance->isRetroactive());
-      Flags =
-        Flags.withIsSynthesizedNonUnique(Conformance->isSynthesizedNonUnique());
-
-      // Add the flags.
-      B.addInt32(Flags.getIntValue());
-    }
-
-    void addContext() {
-      if (!Conformance->isRetroactive())
-        return;
-
-      auto moduleContext =
-        Conformance->getDeclContext()->getModuleScopeContext();
-      ConstantReference moduleContextRef =
-        IGM.getAddrOfParentContextDescriptor(moduleContext);
-      B.addRelativeAddress(moduleContextRef);
-    }
-
-    void addConditionalRequirements() {
-      if (Conformance->getConditionalRequirements().empty())
-        return;
-
-      auto nominal = Conformance->getType()->getAnyNominal();
-      irgen::addGenericRequirements(IGM, B,
-        nominal->getGenericSignatureOfContext(),
-        Conformance->getConditionalRequirements());
-    }
-  };
-}
-
-void IRGenModule::emitProtocolConformance(
-                                const NormalProtocolConformance *conformance) {
-  // Emit additional metadata to be used by reflection.
-  emitAssociatedTypeMetadataRecord(conformance);
-
-  // Form the protocol conformance descriptor.
-  ConstantInitBuilder initBuilder(*this);
-  auto init = initBuilder.beginStruct();
-  ProtocolConformanceDescriptorBuilder builder(*this, init, conformance);
-  builder.layout();
-
-  auto var =
-    cast<llvm::GlobalVariable>(
-          getAddrOfProtocolConformanceDescriptor(conformance,
-                                                 init.finishAndCreateFuture()));
-  var->setConstant(true);
-}
-
 void IRGenModule::addProtocolConformance(
-                                const NormalProtocolConformance *conformance) {
+                                ConformanceDescription record) {
   // Add this protocol conformance.
-  ProtocolConformances.push_back(conformance);
+  ProtocolConformances.push_back(std::move(record));
 }
 
 /// Emit the protocol conformance list and return it.
 llvm::Constant *IRGenModule::emitProtocolConformances() {
-  // Do nothing if the list is empty.
-  if (ProtocolConformances.empty())
+  // Emit the conformances.
+  bool anyReflectedConformances = false;
+  for (const auto &record : ProtocolConformances) {
+    // Emit the protocol conformance now.
+    emitProtocolConformance(record);
+
+    if (record.conformance->isBehaviorConformance())
+      continue;
+
+    anyReflectedConformances = true;
+  }
+
+  if (!anyReflectedConformances)
     return nullptr;
 
   // Define the global variable for the conformance list.
-
   ConstantInitBuilder builder(*this);
   auto descriptorArray = builder.beginArray(RelativeAddressTy);
 
-  for (auto *conformance : ProtocolConformances) {
-    // Emit the protocol conformance now.
-    emitProtocolConformance(conformance);
+  for (const auto &record : ProtocolConformances) {
+    auto conformance = record.conformance;
+
+    // Behavior conformances cannot be reflected.
+    if (conformance->isBehaviorConformance())
+      continue;
 
     auto entity = LinkEntity::forProtocolConformanceDescriptor(conformance);
     auto descriptor =
@@ -3387,6 +3272,20 @@ llvm::GlobalValue *IRGenModule::defineAssociatedTypeDescriptor(
   return defineAlias(entity, definition);
 }
 
+llvm::Constant *IRGenModule::getAddrOfAssociatedConformanceDescriptor(
+                                          AssociatedConformance conformance) {
+  auto entity = LinkEntity::forAssociatedConformanceDescriptor(conformance);
+  return getAddrOfLLVMVariable(entity, getPointerAlignment(), ConstantInit(),
+                               ProtocolRequirementStructTy, DebugTypeInfo());
+}
+
+llvm::GlobalValue *IRGenModule::defineAssociatedConformanceDescriptor(
+                                            AssociatedConformance conformance,
+                                            llvm::Constant *definition) {
+  auto entity = LinkEntity::forAssociatedConformanceDescriptor(conformance);
+  return defineAlias(entity, definition);
+}
+
 llvm::Constant *IRGenModule::getAddrOfProtocolConformanceDescriptor(
                                 const NormalProtocolConformance *conformance,
                                 ConstantInit definition) {
@@ -3705,7 +3604,7 @@ llvm::Constant *IRGenModule::getAddrOfGlobalUTF16String(StringRef utf8) {
 ///   of stored properties
 bool IRGenModule::isResilient(NominalTypeDecl *D, ResilienceExpansion expansion) {
   if (expansion == ResilienceExpansion::Maximal &&
-      Types.isCompletelyFragile()) {
+      Types.getLoweringMode() == TypeConverter::Mode::CompletelyFragile) {
     return false;
   }
   return D->isResilient(getSwiftModule(), expansion);
@@ -3724,7 +3623,7 @@ IRGenModule::getResilienceExpansionForAccess(NominalTypeDecl *decl) {
 // layout. Calling isResilient() with this scope will always return false.
 ResilienceExpansion
 IRGenModule::getResilienceExpansionForLayout(NominalTypeDecl *decl) {
-  if (Types.isCompletelyFragile())
+  if (Types.getLoweringMode() == TypeConverter::Mode::CompletelyFragile)
     return ResilienceExpansion::Minimal;
 
   if (isResilient(decl, ResilienceExpansion::Minimal))
@@ -3749,14 +3648,6 @@ getAddrOfGenericWitnessTableCache(const NormalProtocolConformance *conf,
   auto expectedTy = getGenericWitnessTableCacheTy();
   return getAddrOfLLVMVariable(entity, getPointerAlignment(), forDefinition,
                                expectedTy, DebugTypeInfo());
-}
-
-llvm::Constant *IRGenModule::
-getAddrOfResilientWitnessTable(const NormalProtocolConformance *conf,
-                               ConstantInit definition) {
-  auto entity = LinkEntity::forResilientProtocolWitnessTable(conf);
-  return getAddrOfLLVMVariable(entity, getPointerAlignment(), definition,
-                               definition.getType(), DebugTypeInfo());
 }
 
 llvm::Function *
@@ -3788,13 +3679,9 @@ llvm::StructType *IRGenModule::getGenericWitnessTableCacheTy() {
     {
       // WitnessTableSizeInWords
       Int16Ty,
-      // WitnessTablePrivateSizeInWords
+      // WitnessTablePrivateSizeInWords + RequiresInstantiation bit
       Int16Ty,
-      // Protocol
-      RelativeAddressTy,
       // Pattern
-      RelativeAddressTy,
-      // ResilientWitnesses
       RelativeAddressTy,
       // Instantiator
       RelativeAddressTy,
@@ -3908,27 +3795,6 @@ IRGenModule::getAddrOfWitnessTablePattern(const NormalProtocolConformance *conf,
 }
 
 llvm::Function *
-IRGenModule::getAddrOfAssociatedTypeMetadataAccessFunction(
-                                  const NormalProtocolConformance *conformance,
-                                  AssociatedType association) {
-  auto forDefinition = ForDefinition;
-
-  LinkEntity entity =
-    LinkEntity::forAssociatedTypeMetadataAccessFunction(conformance,
-                                                        association);
-  llvm::Function *&entry = GlobalFuncs[entity];
-  if (entry) {
-    if (forDefinition) updateLinkageForDefinition(*this, entry, entity);
-    return entry;
-  }
-
-  auto signature = getAssociatedTypeMetadataAccessFunctionSignature();
-  LinkInfo link = LinkInfo::get(*this, entity, forDefinition);
-  entry = createFunction(*this, link, signature);
-  return entry;
-}
-
-llvm::Function *
 IRGenModule::getAddrOfAssociatedTypeWitnessTableAccessFunction(
                                   const NormalProtocolConformance *conformance,
                                   const AssociatedConformance &association) {
@@ -3950,19 +3816,19 @@ IRGenModule::getAddrOfAssociatedTypeWitnessTableAccessFunction(
 }
 
 llvm::Function *
-IRGenModule::getAddrOfDefaultAssociatedTypeMetadataAccessFunction(
-                                  AssociatedType association) {
+IRGenModule::getAddrOfDefaultAssociatedConformanceAccessor(
+                                         AssociatedConformance requirement) {
   auto forDefinition = ForDefinition;
 
   LinkEntity entity =
-    LinkEntity::forDefaultAssociatedTypeMetadataAccessFunction(association);
+    LinkEntity::forDefaultAssociatedConformanceAccessor(requirement);
   llvm::Function *&entry = GlobalFuncs[entity];
   if (entry) {
     if (forDefinition) updateLinkageForDefinition(*this, entry, entity);
     return entry;
   }
 
-  auto signature = getAssociatedTypeMetadataAccessFunctionSignature();
+  auto signature = getAssociatedTypeWitnessTableAccessFunctionSignature();
   LinkInfo link = LinkInfo::get(*this, entity, forDefinition);
   entry = createFunction(*this, link, signature);
   return entry;

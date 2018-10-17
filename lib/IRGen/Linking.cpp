@@ -179,6 +179,22 @@ std::string LinkEntity::mangleAsString() const {
     return mangler.mangleAssociatedTypeDescriptor(
                                           cast<AssociatedTypeDecl>(getDecl()));
 
+  case Kind::AssociatedConformanceDescriptor: {
+    auto assocConformance = getAssociatedConformance();
+    return mangler.mangleAssociatedConformanceDescriptor(
+             cast<ProtocolDecl>(getDecl()),
+             assocConformance.first,
+             assocConformance.second);
+  }
+
+  case Kind::DefaultAssociatedConformanceAccessor: {
+    auto assocConformance = getAssociatedConformance();
+    return mangler.mangleDefaultAssociatedConformanceAccessor(
+             cast<ProtocolDecl>(getDecl()),
+             assocConformance.first,
+             assocConformance.second);
+  }
+
   case Kind::ProtocolConformanceDescriptor:
     return mangler.mangleProtocolConformanceDescriptor(
                    cast<NormalProtocolConformance>(getProtocolConformance()));
@@ -200,9 +216,6 @@ std::string LinkEntity::mangleAsString() const {
     return mangler.mangleGenericProtocolWitnessTableInstantiationFunction(
                                                     getProtocolConformance());
 
-  case Kind::ResilientProtocolWitnessTable:
-    return mangler.mangleResilientProtocolWitnessTable(getProtocolConformance());
-
   case Kind::ProtocolWitnessTableAccessFunction:
     return mangler.mangleProtocolWitnessTableAccessFunction(
                                                     getProtocolConformance());
@@ -217,14 +230,6 @@ std::string LinkEntity::mangleAsString() const {
   case Kind::ProtocolWitnessTableLazyCacheVariable:
     return mangler.mangleProtocolWitnessTableLazyCacheVariable(getType(),
                                                     getProtocolConformance());
-
-  case Kind::AssociatedTypeMetadataAccessFunction:
-    return mangler.mangleAssociatedTypeMetadataAccessFunction(
-                getProtocolConformance(), getAssociatedType()->getNameStr());
-
-  case Kind::DefaultAssociatedTypeMetadataAccessFunction:
-    return mangler.mangleDefaultAssociatedTypeMetadataAccessFunction(
-                getAssociatedType());
 
   case Kind::AssociatedTypeWitnessTableAccessFunction: {
     auto assocConf = getAssociatedConformance();
@@ -449,6 +454,7 @@ SILLinkage LinkEntity::getLinkage(ForDefinition_t forDefinition) const {
     return getSILLinkage(getDeclLinkage(getterDecl), forDefinition);
   }
 
+  case Kind::AssociatedConformanceDescriptor:
   case Kind::ObjCClass:
   case Kind::ObjCMetaclass:
   case Kind::SwiftMetaclassStub:
@@ -469,7 +475,6 @@ SILLinkage LinkEntity::getLinkage(ForDefinition_t forDefinition) const {
     return getLinkageAsConformance();
 
   case Kind::ProtocolWitnessTablePattern:
-  case Kind::ResilientProtocolWitnessTable:
     if (getLinkageAsConformance() == SILLinkage::Shared)
       return SILLinkage::Shared;
     return SILLinkage::Private;
@@ -486,9 +491,8 @@ SILLinkage LinkEntity::getLinkage(ForDefinition_t forDefinition) const {
     }
   }
 
-  case Kind::AssociatedTypeMetadataAccessFunction:
-  case Kind::DefaultAssociatedTypeMetadataAccessFunction:
   case Kind::AssociatedTypeWitnessTableAccessFunction:
+  case Kind::DefaultAssociatedConformanceAccessor:
   case Kind::GenericProtocolWitnessTableCache:
   case Kind::GenericProtocolWitnessTableInstantiationFunction:
     return SILLinkage::Private;
@@ -586,6 +590,7 @@ bool LinkEntity::isAvailableExternally(IRGenModule &IGM) const {
     // FIXME: Removing this triggers a linker bug
     return true;
 
+  case Kind::AssociatedConformanceDescriptor:
   case Kind::SwiftMetaclassStub:
   case Kind::ClassMetadataBaseOffset:
   case Kind::PropertyDescriptor:
@@ -608,7 +613,6 @@ bool LinkEntity::isAvailableExternally(IRGenModule &IGM) const {
     return ::isAvailableExternally(IGM, getProtocolConformance()->getDeclContext());
 
   case Kind::ProtocolWitnessTablePattern:
-  case Kind::ResilientProtocolWitnessTable:
   case Kind::ObjCClassRef:
   case Kind::ModuleDescriptor:
   case Kind::ExtensionDescriptor:
@@ -618,7 +622,7 @@ bool LinkEntity::isAvailableExternally(IRGenModule &IGM) const {
   case Kind::TypeMetadataSingletonInitializationCache:
   case Kind::TypeMetadataCompletionFunction:
   case Kind::TypeMetadataPattern:
-  case Kind::DefaultAssociatedTypeMetadataAccessFunction:
+  case Kind::DefaultAssociatedConformanceAccessor:
     return false;
 
   case Kind::ValueWitness:
@@ -628,7 +632,6 @@ bool LinkEntity::isAvailableExternally(IRGenModule &IGM) const {
   case Kind::ProtocolWitnessTableAccessFunction:
   case Kind::ProtocolWitnessTableLazyAccessFunction:
   case Kind::ProtocolWitnessTableLazyCacheVariable:
-  case Kind::AssociatedTypeMetadataAccessFunction:
   case Kind::AssociatedTypeWitnessTableAccessFunction:
   case Kind::GenericProtocolWitnessTableCache:
   case Kind::GenericProtocolWitnessTableInstantiationFunction:

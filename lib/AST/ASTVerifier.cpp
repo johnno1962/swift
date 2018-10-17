@@ -237,7 +237,7 @@ class Verifier : public ASTWalker {
   /// use the explicit closure sequence (false) or the implicit
   /// closure sequence (true).
   typedef llvm::PointerIntPair<DeclContext *, 1, bool> ClosureDiscriminatorKey;
-  llvm::DenseMap<ClosureDiscriminatorKey, llvm::SmallBitVector>
+  llvm::DenseMap<ClosureDiscriminatorKey, SmallBitVector>
       ClosureDiscriminators;
   DeclContext *CanonicalTopLevelContext = nullptr;
 
@@ -592,6 +592,9 @@ public:
         abort();
       }
 
+      if (!type->hasArchetype())
+        return;
+
       bool foundError = type->getCanonicalType().findIf([&](Type type) -> bool {
         if (auto archetype = type->getAs<ArchetypeType>()) {
           // Only visit each archetype once.
@@ -830,7 +833,7 @@ public:
     }
 
     /// Return the appropriate discriminator set for a closure expression.
-    llvm::SmallBitVector &getClosureDiscriminators(AbstractClosureExpr *closure) {
+    SmallBitVector &getClosureDiscriminators(AbstractClosureExpr *closure) {
       auto dc = getCanonicalDeclContext(closure->getParent());
       bool isAutoClosure = isa<AutoClosureExpr>(closure);
       return ClosureDiscriminators[ClosureDiscriminatorKey(dc, isAutoClosure)];

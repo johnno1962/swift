@@ -773,7 +773,7 @@ SILBasicBlock *SILDeserializer::readSILBasicBlock(SILFunction *Fn,
       Arg = CurrentBB->createFunctionArgument(SILArgTy);
     } else {
       auto OwnershipKind = ValueOwnershipKind((Args[I + 1] >> 8) & 0xF);
-      Arg = CurrentBB->createPHIArgument(SILArgTy, OwnershipKind);
+      Arg = CurrentBB->createPhiArgument(SILArgTy, OwnershipKind);
     }
     LastValueID = LastValueID + 1;
     setLocalValue(Arg, LastValueID);
@@ -789,6 +789,8 @@ static CastConsumptionKind getCastConsumptionKind(unsigned attr) {
     return CastConsumptionKind::TakeOnSuccess;
   case SIL_CAST_CONSUMPTION_COPY_ON_SUCCESS:
     return CastConsumptionKind::CopyOnSuccess;
+  case SIL_CAST_CONSUMPTION_BORROW_ALWAYS:
+    return CastConsumptionKind::BorrowAlways;
   default:
     llvm_unreachable("not a valid CastConsumptionKind for SIL");
   }

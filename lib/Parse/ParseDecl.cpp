@@ -2462,19 +2462,13 @@ void Parser::consumeDecl(ParserPosition BeginParserPosition,
                          ParseDeclOptions Flags,
                          bool IsTopLevel) {
   SourceLoc CurrentLoc = Tok.getLoc();
+
+  SourceLoc EndLoc = PreviousLoc;
   backtrackToPosition(BeginParserPosition);
   SourceLoc BeginLoc = Tok.getLoc();
-  // Consume tokens up to code completion token.
-  while (Tok.isNot(tok::code_complete, tok::eof))
-    consumeToken();
 
-  // Consume the code completion token, if there is one.
-  consumeIf(tok::code_complete);
-  SourceLoc EndLoc = DelayedDeclEnd.isValid() &&
-                     SourceMgr.isBeforeInBuffer(Tok.getLoc(), DelayedDeclEnd) ?
-                       DelayedDeclEnd : Tok.getLoc();
   State->delayDecl(PersistentParserState::DelayedDeclKind::Decl, Flags.toRaw(),
-                   CurDeclContext, { BeginLoc, EndLoc },
+                   CurDeclContext, {BeginLoc, EndLoc},
                    BeginParserPosition.PreviousLoc);
 
   while (SourceMgr.isBeforeInBuffer(Tok.getLoc(), CurrentLoc))
@@ -3583,7 +3577,6 @@ ParserStatus Parser::parseLineDirective(bool isLine) {
   
   unsigned StartLine = 0;
   Optional<StringRef> Filename;
-  const char *LastTokTextEnd;
   if (!isLine) {
     // #sourceLocation()
     // #sourceLocation(file: "foo", line: 42)
@@ -3640,10 +3633,10 @@ ParserStatus Parser::parseLineDirective(bool isLine) {
       consumeToken(tok::integer_literal);
     }
 
-    LastTokTextEnd = Tok.getText().end();
-    if (parseToken(tok::r_paren, diag::sourceLocation_expected, ")"))
+    if (Tok.isNot(tok::r_paren)) {
+      diagnose(Tok, diag::sourceLocation_expected, ")");
       return makeParserError();
-    
+    }
   } else {  // Legacy #line syntax.
   
     // #line\n returns to the main buffer.
@@ -3679,10 +3672,10 @@ ParserStatus Parser::parseLineDirective(bool isLine) {
                                                  "#line");
     if (!Filename.hasValue())
       return makeParserError();
-    LastTokTextEnd = Tok.getText().end();
-    consumeToken(tok::string_literal);
   }
-  
+
+  const char *LastTokTextEnd = Tok.getText().end();
+
   // Skip over trailing whitespace and a single \n to the start of the next
   // line.
   while (*LastTokTextEnd == ' ' || *LastTokTextEnd == '\t')
@@ -3702,6 +3695,9 @@ ParserStatus Parser::parseLineDirective(bool isLine) {
   bool isNewFile = SourceMgr.openVirtualFile(nextLineStartLoc,
                                              Filename.getValue(), LineOffset);
   assert(isNewFile);(void)isNewFile;
+
+  // Lexing of next token must be deferred until after virtual file setup.
+  consumeToken(isLine ? tok::string_literal : tok::r_paren);
 
   InPoundLineEnvironment = true;
   return makeParserSuccess();
@@ -4271,7 +4267,7 @@ bool Parser::parseGetSet(ParseDeclOptions Flags,
   assert(Tok.is(tok::l_brace));
 
   // Properties in protocols use a very limited syntax.
-  // SIL mode and textual interfaces use the same syntax.
+  // SIL mode and parseable interfaces use the same syntax.
   // Otherwise, we have a normal var or subscript declaration and we need
   // parse the full complement of specifiers, along with their bodies.
   bool parsingLimitedSyntax = Flags.contains(PD_InProtocol) ||
@@ -4394,7 +4390,7 @@ bool Parser::parseGetSet(ParseDeclOptions Flags,
 
     // It's okay not to have a body if there's an external asm name.
     if (!Tok.is(tok::l_brace)) {
-      // Accessors don't need bodies in textual interfaces
+      // Accessors don't need bodies in parseable interfaces
       if (SF.Kind == SourceFileKind::Interface)
         continue;
       // _silgen_name'd accessors don't need bodies.
@@ -5040,14 +5036,12 @@ Parser::parseDeclVar(ParseDeclOptions Flags,
         PBDEntries.back().setInitializerLazy();
       }
 
-      // If we are doing second pass of code completion, we don't want to
-      // suddenly cut off parsing and throw away the declaration.
-      if (init.hasCodeCompletion() && isCodeCompletionFirstPass()) {
-
-        // Register the end of the init as the end of the delayed parsing.
-        DelayedDeclEnd
-          = init.getPtrOrNull() ? init.get()->getEndLoc() : SourceLoc();
-        return makeResult(makeParserCodeCompletionStatus());
+      if (init.hasCodeCompletion()) {
+        Status |= init;
+        // If we are doing second pass of code completion, we don't want to
+        // suddenly cut off parsing and throw away the declaration.
+        if (isCodeCompletionFirstPass())
+          return makeResult(makeParserCodeCompletionStatus());
       }
 
       if (init.isNull())
@@ -6224,7 +6218,7 @@ Parser::parseDeclSubscript(ParseDeclOptions Flags,
     if (!Status.isError()) {
       if (Flags.contains(PD_InProtocol)) {
         diagnose(Tok, diag::expected_lbrace_subscript_protocol)
-            .fixItInsertAfter(ElementTy.get()->getEndLoc(), " { get set }");
+            .fixItInsertAfter(ElementTy.get()->getEndLoc(), " { get <#set#> }");
       } else {
         diagnose(Tok, diag::expected_lbrace_subscript);
       }
@@ -6402,7 +6396,7 @@ parseDeclDeinit(ParseDeclOptions Flags, DeclAttributes &Attributes) {
     switch (SF.Kind) {
     case SourceFileKind::Interface:
     case SourceFileKind::SIL:
-      // It's okay to have no body for SIL code or textual interfaces.
+      // It's okay to have no body for SIL code or parseable interfaces.
       break;
     case SourceFileKind::Library:
     case SourceFileKind::Main:
@@ -6463,28 +6457,28 @@ Parser::parseDeclOperator(ParseDeclOptions Flags, DeclAttributes &Attributes) {
   }
 
   DebuggerContextChange DCC (*this);
-  
+
   Identifier Name = Context.getIdentifier(Tok.getText());
   SourceLoc NameLoc = consumeToken();
-    
+
   if (Attributes.hasAttribute<PostfixAttr>()) {
     if (!Name.empty() && (Name.get()[0] == '?' || Name.get()[0] == '!'))
       diagnose(NameLoc, diag::expected_operator_name_after_operator);      
   }
-  
+
   auto Result = parseDeclOperatorImpl(OperatorLoc, Name, NameLoc, Attributes);
 
   if (!DCC.movedToTopLevel() && !AllowTopLevel) {
     diagnose(OperatorLoc, diag::operator_decl_inner_scope);
     return nullptr;
   }
-  
+
   return DCC.fixupParserResult(Result);
 }
 
 ParserResult<OperatorDecl>
 Parser::parseDeclOperatorImpl(SourceLoc OperatorLoc, Identifier Name,
-                                SourceLoc NameLoc, DeclAttributes &Attributes) {
+                              SourceLoc NameLoc, DeclAttributes &Attributes) {
   bool isPrefix = Attributes.hasAttribute<PrefixAttr>();
   bool isInfix = Attributes.hasAttribute<InfixAttr>();
   bool isPostfix = Attributes.hasAttribute<PostfixAttr>();
@@ -6494,38 +6488,63 @@ Parser::parseDeclOperatorImpl(SourceLoc OperatorLoc, Identifier Name,
   // parse them both as identifiers here and sort it out in type
   // checking.
   SourceLoc colonLoc;
-  Identifier firstIdentifierName;
-  SourceLoc firstIdentifierNameLoc;
-  Identifier secondIdentifierName;
-  SourceLoc secondIdentifierNameLoc;
+  SmallVector<Identifier, 4> identifiers;
+  SmallVector<SourceLoc, 4> identifierLocs;
   if (Tok.is(tok::colon)) {
-    SyntaxParsingContext GroupCtxt(SyntaxContext, SyntaxKind::InfixOperatorGroup);
+    SyntaxParsingContext GroupCtxt(SyntaxContext,
+                                   SyntaxKind::OperatorPrecedenceAndTypes);
     colonLoc = consumeToken();
-    if (Tok.is(tok::identifier)) {
-      firstIdentifierName = Context.getIdentifier(Tok.getText());
-      firstIdentifierNameLoc = consumeToken(tok::identifier);
+    if (Tok.is(tok::code_complete)) {
+      if (CodeCompletion && !isPrefix && !isPostfix) {
+        CodeCompletion->completeInPrecedenceGroup(
+          SyntaxKind::PrecedenceGroupRelation);
+      }
+      consumeToken();
 
-      if (Context.LangOpts.EnableOperatorDesignatedProtocols) {
-        if (consumeIf(tok::comma)) {
-          if (isPrefix || isPostfix)
-            diagnose(colonLoc, diag::precedencegroup_not_infix)
-                .fixItRemove({colonLoc, firstIdentifierNameLoc});
+      return makeParserCodeCompletionResult<OperatorDecl>();
+    }
+
+    if (Context.LangOpts.EnableOperatorDesignatedTypes) {
+      if (Tok.is(tok::identifier)) {
+        SyntaxParsingContext GroupCtxt(SyntaxContext,
+                                       SyntaxKind::IdentifierList);
+
+        identifiers.push_back(Context.getIdentifier(Tok.getText()));
+        identifierLocs.push_back(consumeToken(tok::identifier));
+
+        while (Tok.is(tok::comma)) {
+          auto comma = consumeToken();
 
           if (Tok.is(tok::identifier)) {
-            secondIdentifierName = Context.getIdentifier(Tok.getText());
-            secondIdentifierNameLoc = consumeToken(tok::identifier);
+            identifiers.push_back(Context.getIdentifier(Tok.getText()));
+            identifierLocs.push_back(consumeToken(tok::identifier));
           } else {
-            auto otherTokLoc = consumeToken();
-            diagnose(otherTokLoc, diag::operator_decl_trailing_comma);
+            if (Tok.isNot(tok::eof)) {
+              auto otherTokLoc = consumeToken();
+              diagnose(otherTokLoc, diag::operator_decl_expected_type);
+            } else {
+              diagnose(comma, diag::operator_decl_trailing_comma);
+            }
           }
         }
-      } else if (isPrefix || isPostfix) {
-        diagnose(colonLoc, diag::precedencegroup_not_infix)
-            .fixItRemove({colonLoc, firstIdentifierNameLoc});
       }
+    } else if (Tok.is(tok::identifier)) {
+      SyntaxParsingContext GroupCtxt(SyntaxContext,
+                                     SyntaxKind::IdentifierList);
+
+      identifiers.push_back(Context.getIdentifier(Tok.getText()));
+      identifierLocs.push_back(consumeToken(tok::identifier));
+
+      if (isPrefix || isPostfix) {
+        diagnose(colonLoc, diag::precedencegroup_not_infix)
+            .fixItRemove({colonLoc, identifierLocs.back()});
+      }
+      // Nothing to complete here, simply consume the token.
+      if (Tok.is(tok::code_complete))
+        consumeToken();
     }
   }
-  
+
   // Diagnose deprecated operator body syntax `operator + { ... }`.
   SourceLoc lBraceLoc;
   if (consumeIf(tok::l_brace, lBraceLoc)) {
@@ -6534,7 +6553,8 @@ Parser::parseDeclOperatorImpl(SourceLoc OperatorLoc, Identifier Name,
     } else {
       auto Diag = diagnose(lBraceLoc, diag::deprecated_operator_body);
       if (Tok.is(tok::r_brace)) {
-        SourceLoc lastGoodLoc = firstIdentifierNameLoc;
+        SourceLoc lastGoodLoc =
+            !identifierLocs.empty() ? identifierLocs.back() : SourceLoc();
         if (lastGoodLoc.isInvalid())
           lastGoodLoc = NameLoc;
         SourceLoc lastGoodLocEnd = Lexer::getLocForEndOfToken(SourceMgr,
@@ -6547,24 +6567,26 @@ Parser::parseDeclOperatorImpl(SourceLoc OperatorLoc, Identifier Name,
     skipUntilDeclRBrace();
     (void) consumeIf(tok::r_brace);
   }
-  
+
   OperatorDecl *res;
   if (Attributes.hasAttribute<PrefixAttr>())
     res = new (Context)
         PrefixOperatorDecl(CurDeclContext, OperatorLoc, Name, NameLoc,
-                           firstIdentifierName, firstIdentifierNameLoc);
+                           Context.AllocateCopy(identifiers),
+                           Context.AllocateCopy(identifierLocs));
   else if (Attributes.hasAttribute<PostfixAttr>())
     res = new (Context)
         PostfixOperatorDecl(CurDeclContext, OperatorLoc, Name, NameLoc,
-                            firstIdentifierName, firstIdentifierNameLoc);
+                            Context.AllocateCopy(identifiers),
+                            Context.AllocateCopy(identifierLocs));
   else
     res = new (Context)
         InfixOperatorDecl(CurDeclContext, OperatorLoc, Name, NameLoc, colonLoc,
-                          firstIdentifierName, firstIdentifierNameLoc,
-                          secondIdentifierName, secondIdentifierNameLoc);
+                          Context.AllocateCopy(identifiers),
+                          Context.AllocateCopy(identifierLocs));
 
   diagnoseOperatorFixityAttributes(*this, Attributes, res);
-  
+
   res->getAttrs() = Attributes;
   return makeParserResult(res);
 }
@@ -6584,7 +6606,7 @@ Parser::parseDeclPrecedenceGroup(ParseDeclOptions flags,
   Identifier name;
   SourceLoc nameLoc;
   if (parseIdentifier(name, nameLoc, diag::expected_precedencegroup_name)) {
-    // If the identifier is missing or a keyword or something, try to skip
+    // If the identifier is missing or a keyword or something, try to
     // skip the entire body.
     if (consumeIf(tok::l_brace)) {
       skipUntilDeclRBrace();
@@ -6604,6 +6626,7 @@ Parser::parseDeclPrecedenceGroup(ParseDeclOptions flags,
   Associativity associativity = Associativity::None;
   bool assignment = false;
   bool invalid = false;
+  bool hasCodeCompletion = false;
 
   // Helper functions.
   auto create = [&] {
@@ -6622,7 +6645,7 @@ Parser::parseDeclPrecedenceGroup(ParseDeclOptions flags,
     result->getAttrs() = attributes;
     return result;
   };
-  auto createInvalid = [&] {
+  auto createInvalid = [&](bool hasCodeCompletion) {
     // Use the last consumed token location as the rbrace to satisfy
     // the AST invariant about a decl's source range including all of
     // its components.
@@ -6630,13 +6653,15 @@ Parser::parseDeclPrecedenceGroup(ParseDeclOptions flags,
 
     auto result = create();
     result->setInvalid();
+    if (hasCodeCompletion)
+      return makeParserCodeCompletionResult(result);
     return makeParserErrorResult(result);
   };
 
   // Expect the body to start here.
   if (!consumeIf(tok::l_brace, lbraceLoc)) {
     diagnose(Tok, diag::expected_precedencegroup_lbrace);
-    return createInvalid();
+    return createInvalid(/*hasCodeCompletion*/false);
   }
   // Empty body.
   if (Tok.is(tok::r_brace)) {
@@ -6647,10 +6672,10 @@ Parser::parseDeclPrecedenceGroup(ParseDeclOptions flags,
     return makeParserResult(create());
   }
 
-  auto abortBody = [&] {
+  auto abortBody = [&](bool hasCodeCompletion = false) {
     skipUntilDeclRBrace();
     (void) consumeIf(tok::r_brace, rbraceLoc);
-    return createInvalid();
+    return createInvalid(hasCodeCompletion);
   };
 
   auto parseAttributePrefix = [&](SourceLoc &attrKeywordLoc) {
@@ -6667,14 +6692,34 @@ Parser::parseDeclPrecedenceGroup(ParseDeclOptions flags,
     }
   };
 
+  auto checkCodeCompletion = [&](SyntaxKind SK) -> bool {
+    if (Tok.is(tok::code_complete)) {
+      if (CodeCompletion)
+        CodeCompletion->completeInPrecedenceGroup(SK);
+      consumeToken();
+      return true;
+    }
+    return false;
+  };
+
+  // Skips the CC token if it comes without spacing.
+  auto skipUnspacedCodeCompleteToken = [&]() -> bool {
+    if (Tok.is(tok::code_complete) && getEndOfPreviousLoc() == Tok.getLoc()) {
+       consumeToken();
+      return true;
+    }
+    return false;
+  };
 
   // Parse the attributes in the body.
-  while (!Tok.is(tok::r_brace)) {
-    if (!Tok.is(tok::identifier)) {
+  while (Tok.isNot(tok::r_brace)) {
+    if (checkCodeCompletion(SyntaxKind::PrecedenceGroupAttributeList)) {
+      hasCodeCompletion = true;
+      continue;
+    } else if (Tok.isNot(tok::identifier)) {
       diagnose(Tok, diag::expected_precedencegroup_attribute);
       return abortBody();
     }
-
     auto attrName = Tok.getText();
 
     if (attrName == "associativity") {
@@ -6685,16 +6730,21 @@ Parser::parseDeclPrecedenceGroup(ParseDeclOptions flags,
                                            tok::contextual_keyword);
       parseAttributePrefix(associativityKeywordLoc);
 
-      if (!Tok.is(tok::identifier)) {
+      if (checkCodeCompletion(SyntaxKind::PrecedenceGroupAssociativity))
+        return abortBody(/*hasCodeCompletion*/true);
+
+      if (Tok.isNot(tok::identifier)) {
         diagnose(Tok, diag::expected_precedencegroup_associativity);
         return abortBody();
       }
+
       auto parsedAssociativity
         = llvm::StringSwitch<Optional<Associativity>>(Tok.getText())
           .Case("none", Associativity::None)
           .Case("left", Associativity::Left)
           .Case("right", Associativity::Right)
           .Default(None);
+
       if (!parsedAssociativity) {
         diagnose(Tok, diag::expected_precedencegroup_associativity);
         parsedAssociativity = Associativity::None;
@@ -6702,6 +6752,9 @@ Parser::parseDeclPrecedenceGroup(ParseDeclOptions flags,
       }
       associativity = *parsedAssociativity;
       associativityValueLoc = consumeToken();
+
+      if (skipUnspacedCodeCompleteToken())
+        return abortBody(/*hasCodeCompletion*/true);
       continue;
     }
     
@@ -6713,6 +6766,9 @@ Parser::parseDeclPrecedenceGroup(ParseDeclOptions flags,
       // "assignment" is considered as a contextual keyword.
       TokReceiver->registerTokenKindChange(assignmentKeywordLoc,
                                            tok::contextual_keyword);
+      if (checkCodeCompletion(SyntaxKind::PrecedenceGroupAssignment))
+        return abortBody(/*hasCodeCompletion*/true);
+
       if (consumeIf(tok::kw_true, assignmentValueLoc)) {
         assignment = true;
       } else if (consumeIf(tok::kw_false, assignmentValueLoc)) {
@@ -6721,6 +6777,8 @@ Parser::parseDeclPrecedenceGroup(ParseDeclOptions flags,
         diagnose(Tok, diag::expected_precedencegroup_assignment);
         return abortBody();
       }
+      if (skipUnspacedCodeCompleteToken())
+        return abortBody(/*hasCodeCompletion*/true);
       continue;
     }
 
@@ -6739,28 +6797,35 @@ Parser::parseDeclPrecedenceGroup(ParseDeclOptions flags,
       do {
         SyntaxParsingContext NameCtxt(SyntaxContext,
                                       SyntaxKind::PrecedenceGroupNameElement);
-        if (!Tok.is(tok::identifier)) {
+        if (checkCodeCompletion(SyntaxKind::PrecedenceGroupRelation)) {
+          return abortBody(/*hasCodeCompletion*/true);
+        }
+
+        if (Tok.isNot(tok::identifier)) {
           diagnose(Tok, diag::expected_precedencegroup_relation, attrName);
           return abortBody();
         }
         auto name = Context.getIdentifier(Tok.getText());
-        auto loc = consumeToken();
-        relations.push_back({loc, name, nullptr});
+        relations.push_back({consumeToken(), name, nullptr});
+
+        if (skipUnspacedCodeCompleteToken())
+          return abortBody(/*hasCodeCompletion*/true);
         if (!consumeIf(tok::comma))
           break;
       } while (true);
       SyntaxContext->collectNodesInPlace(SyntaxKind::PrecedenceGroupNameList);
       continue;
     }
-    
+
     diagnose(Tok, diag::unknown_precedencegroup_attribute, attrName);
     return abortBody();
   }
   SyntaxContext->collectNodesInPlace(SyntaxKind::PrecedenceGroupAttributeList);
   rbraceLoc = consumeToken(tok::r_brace);
 
-
   auto result = create();
   if (invalid) result->setInvalid();
+  if (hasCodeCompletion)
+    return makeParserCodeCompletionResult(result);
   return makeParserResult(result);
 }

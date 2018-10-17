@@ -191,6 +191,7 @@ static void addCommonFrontendArgs(const ToolChain &TC, const OutputInfo &OI,
   inputArgs.AddLastArg(arguments, options::OPT_import_underlying_module);
   inputArgs.AddLastArg(arguments, options::OPT_module_cache_path);
   inputArgs.AddLastArg(arguments, options::OPT_module_link_name);
+  inputArgs.AddLastArg(arguments, options::OPT_enable_parseable_module_interface);
   inputArgs.AddLastArg(arguments, options::OPT_nostdimport);
   inputArgs.AddLastArg(arguments, options::OPT_parse_stdlib);
   inputArgs.AddLastArg(arguments, options::OPT_resource_dir);
@@ -436,7 +437,7 @@ const char *ToolChain::JobContext::computeFrontendModeForCompile() const {
   case file_types::TY_ModuleTrace:
   case file_types::TY_TBD:
   case file_types::TY_OptRecord:
-  case file_types::TY_SwiftModuleInterfaceFile:
+  case file_types::TY_SwiftParseableInterfaceFile:
     llvm_unreachable("Output type can never be primary output.");
   case file_types::TY_INVALID:
     llvm_unreachable("Invalid type ID");
@@ -546,8 +547,8 @@ void ToolChain::JobContext::addFrontendSupplementaryOutputArguments(
                    "-emit-module-doc-path");
 
   addOutputsOfType(arguments, Output, Args,
-                   file_types::ID::TY_SwiftModuleInterfaceFile,
-                   "-emit-interface-path");
+                   file_types::ID::TY_SwiftParseableInterfaceFile,
+                   "-emit-parseable-module-interface-path");
 
   addOutputsOfType(arguments, Output, Args,
                    file_types::TY_SerializedDiagnostics,
@@ -574,7 +575,10 @@ ToolChain::InvocationInfo
 ToolChain::constructInvocation(const InterpretJobAction &job,
                                const JobContext &context) const {
   assert(context.OI.CompilerMode == OutputInfo::Mode::Immediate);
-  ArgStringList Arguments;
+
+  InvocationInfo II{SWIFT_EXECUTABLE_NAME};
+  ArgStringList &Arguments = II.Arguments;
+  II.allowsResponseFiles = true;
 
   Arguments.push_back("-frontend");
   Arguments.push_back("-interpret");
@@ -603,7 +607,7 @@ ToolChain::constructInvocation(const InterpretJobAction &job,
   // The immediate arguments must be last.
   context.Args.AddLastArg(Arguments, options::OPT__DASH_DASH);
 
-  return {SWIFT_EXECUTABLE_NAME, Arguments};
+  return II;
 }
 
 ToolChain::InvocationInfo
@@ -665,7 +669,7 @@ ToolChain::constructInvocation(const BackendJobAction &job,
     case file_types::TY_Remapping:
     case file_types::TY_ModuleTrace:
     case file_types::TY_OptRecord:
-    case file_types::TY_SwiftModuleInterfaceFile:
+    case file_types::TY_SwiftParseableInterfaceFile:
       llvm_unreachable("Output type can never be primary output.");
     case file_types::TY_INVALID:
       llvm_unreachable("Invalid type ID");
@@ -751,6 +755,7 @@ ToolChain::constructInvocation(const MergeModuleJobAction &job,
                                const JobContext &context) const {
   InvocationInfo II{SWIFT_EXECUTABLE_NAME};
   ArgStringList &Arguments = II.Arguments;
+  II.allowsResponseFiles = true;
 
   Arguments.push_back("-frontend");
 
@@ -799,8 +804,8 @@ ToolChain::constructInvocation(const MergeModuleJobAction &job,
   addOutputsOfType(Arguments, context.Output, context.Args,
                    file_types::TY_SwiftModuleDocFile, "-emit-module-doc-path");
   addOutputsOfType(Arguments, context.Output, context.Args,
-                   file_types::ID::TY_SwiftModuleInterfaceFile,
-                   "-emit-interface-path");
+                   file_types::ID::TY_SwiftParseableInterfaceFile,
+                   "-emit-parseable-module-interface-path");
   addOutputsOfType(Arguments, context.Output, context.Args,
                    file_types::TY_SerializedDiagnostics,
                    "-serialize-diagnostics-path");
@@ -828,7 +833,9 @@ ToolChain::constructInvocation(const MergeModuleJobAction &job,
 ToolChain::InvocationInfo
 ToolChain::constructInvocation(const ModuleWrapJobAction &job,
                                const JobContext &context) const {
-  ArgStringList Arguments;
+  InvocationInfo II{SWIFT_EXECUTABLE_NAME};
+  ArgStringList &Arguments = II.Arguments;
+  II.allowsResponseFiles = true;
 
   Arguments.push_back("-modulewrap");
 
@@ -849,7 +856,7 @@ ToolChain::constructInvocation(const ModuleWrapJobAction &job,
   Arguments.push_back(
       context.Args.MakeArgString(context.Output.getPrimaryOutputFilename()));
 
-  return {SWIFT_EXECUTABLE_NAME, Arguments};
+  return II;
 }
 
 ToolChain::InvocationInfo
@@ -949,7 +956,9 @@ ToolChain::constructInvocation(const GeneratePCHJobAction &job,
          (job.isPersistentPCH() &&
           context.Output.getPrimaryOutputType() == file_types::TY_Nothing));
 
-  ArgStringList Arguments;
+  InvocationInfo II{SWIFT_EXECUTABLE_NAME};
+  ArgStringList &Arguments = II.Arguments;
+  II.allowsResponseFiles = true;
 
   Arguments.push_back("-frontend");
 
@@ -973,7 +982,7 @@ ToolChain::constructInvocation(const GeneratePCHJobAction &job,
         context.Args.MakeArgString(context.Output.getPrimaryOutputFilename()));
   }
 
-  return {SWIFT_EXECUTABLE_NAME, Arguments};
+  return II;
 }
 
 ToolChain::InvocationInfo

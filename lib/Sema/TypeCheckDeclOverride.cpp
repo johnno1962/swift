@@ -481,8 +481,7 @@ static void diagnoseGeneralOverrideFailure(ValueDecl *decl,
                                matchDecl->getDescriptiveKind(),
                                matchDecl->getFullName());
     if (attempt == OverrideCheckingAttempt::BaseName) {
-      fixDeclarationName(diag, cast<AbstractFunctionDecl>(decl),
-                         matchDecl->getFullName());
+      fixDeclarationName(diag, decl, matchDecl->getFullName());
     }
   }
 }
@@ -550,7 +549,7 @@ namespace {
 
     /// The set of declarations in which we'll look for overridden
     /// methods.
-    DirectlyReferencedTypeDecls superContexts;
+    SmallVector<NominalTypeDecl *, 2> superContexts;
 
     /// Cached member lookup results.
     SmallVector<ValueDecl *, 4> members;
@@ -773,8 +772,7 @@ bool OverrideMatcher::checkOverride(ValueDecl *baseDecl,
                                isa<ConstructorDecl>(decl),
                                decl->getFullName(),
                                baseDecl->getFullName());
-    fixDeclarationName(diag, cast<AbstractFunctionDecl>(decl),
-                       baseDecl->getFullName());
+    fixDeclarationName(diag, decl, baseDecl->getFullName());
     emittedMatchError = true;
   }
 
@@ -1562,9 +1560,7 @@ static bool checkSingleOverride(ValueDecl *override, ValueDecl *base) {
         !base->isDynamic() &&
         override->getDeclContext()->isExtensionContext()) {
       // For compatibility, only generate a warning in Swift 3
-      diags.diagnose(override, (ctx.isSwiftVersion3()
-        ? diag::override_class_declaration_in_extension_warning
-        : diag::override_class_declaration_in_extension));
+      diags.diagnose(override, diag::override_class_declaration_in_extension);
       diags.diagnose(base, diag::overridden_here);
     }
   }
@@ -1702,9 +1698,11 @@ computeOverriddenAssociatedTypes(AssociatedTypeDecl *assocType) {
 
     // Look for associated types with the same name.
     bool foundAny = false;
+    auto flags = OptionSet<NominalTypeDecl::LookupDirectFlags>();
+    flags |= NominalTypeDecl::LookupDirectFlags::IgnoreNewExtensions;
     for (auto member : inheritedProto->lookupDirect(
                                               assocType->getFullName(),
-                                              /*ignoreNewExtensions=*/true)) {
+                                              flags)) {
       if (auto assocType = dyn_cast<AssociatedTypeDecl>(member)) {
         overriddenAssocTypes.push_back(assocType);
         foundAny = true;

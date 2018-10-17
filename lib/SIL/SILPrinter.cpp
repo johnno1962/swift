@@ -20,6 +20,7 @@
 #include "swift/Demangling/Demangle.h"
 #include "swift/Basic/QuotedString.h"
 #include "swift/SIL/SILPrintContext.h"
+#include "swift/SIL/ApplySite.h"
 #include "swift/SIL/CFG.h"
 #include "swift/SIL/SILFunction.h"
 #include "swift/SIL/SILCoverageMap.h"
@@ -397,6 +398,7 @@ static StringRef getCastConsumptionKindName(CastConsumptionKind kind) {
   case CastConsumptionKind::TakeAlways: return "take_always";
   case CastConsumptionKind::TakeOnSuccess: return "take_on_success";
   case CastConsumptionKind::CopyOnSuccess: return "copy_on_success";
+  case CastConsumptionKind::BorrowAlways: return "borrow_always";
   }
   llvm_unreachable("bad cast consumption kind");
 }

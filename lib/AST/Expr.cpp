@@ -32,6 +32,11 @@
 #include "llvm/ADT/Twine.h"
 using namespace swift;
 
+#define EXPR(Id, _) \
+  static_assert(IsTriviallyDestructible<Id##Expr>::value, \
+                "Exprs are BumpPtrAllocated; the destructor is never called");
+#include "swift/AST/ExprNodes.def"
+
 StringRef swift::getFunctionRefKindStr(FunctionRefKind refKind) {
   switch (refKind) {
   case FunctionRefKind::Unapplied:
@@ -752,7 +757,8 @@ static LiteralExpr *
 shallowCloneImpl(const IntegerLiteralExpr *E, ASTContext &Ctx,
                  llvm::function_ref<Type(const Expr *)> getType) {
   auto res = new (Ctx) IntegerLiteralExpr(E->getDigitsText(),
-                                          E->getSourceRange().End);
+                                          E->getSourceRange().End,
+                                          false, E->isCodepoint());
   if (E->isNegative())
     res->setNegative(E->getSourceRange().Start);
   return res;
@@ -2135,13 +2141,16 @@ KeyPathExpr::Component::Component(ASTContext *ctxForCopyingLabels,
                      Kind kind,
                      Type type,
                      SourceLoc loc)
-    : Decl(decl), SubscriptIndexExprAndKind(indexExpr, kind),
-      SubscriptLabels(subscriptLabels.empty()
-                       ? subscriptLabels
-                       : ctxForCopyingLabels->AllocateCopy(subscriptLabels)),
-      SubscriptHashableConformances(indexHashables),
+    : Decl(decl), SubscriptIndexExpr(indexExpr), KindValue(kind),
       ComponentType(type), Loc(loc)
-  {}
+{
+  assert(subscriptLabels.size() == indexHashables.size()
+         || indexHashables.empty());
+  SubscriptLabelsData = subscriptLabels.data();
+  SubscriptHashableConformancesData = indexHashables.empty()
+    ? nullptr : indexHashables.data();
+  SubscriptSize = subscriptLabels.size();
+}
 
 KeyPathExpr::Component
 KeyPathExpr::Component::forSubscriptWithPrebuiltIndexExpr(
@@ -2157,8 +2166,10 @@ void KeyPathExpr::Component::setSubscriptIndexHashableConformances(
     ArrayRef<ProtocolConformanceRef> hashables) {
   switch (getKind()) {
   case Kind::Subscript:
-    SubscriptHashableConformances = getComponentType()->getASTContext()
-      .AllocateCopy(hashables);
+    assert(hashables.size() == SubscriptSize);
+    SubscriptHashableConformancesData = getComponentType()->getASTContext()
+      .AllocateCopy(hashables)
+      .data();
     return;
     
   case Kind::UnresolvedSubscript:
@@ -2168,6 +2179,7 @@ void KeyPathExpr::Component::setSubscriptIndexHashableConformances(
   case Kind::OptionalForce:
   case Kind::UnresolvedProperty:
   case Kind::Property:
+  case Kind::Identity:
     llvm_unreachable("no hashable conformances for this kind");
   }
 }

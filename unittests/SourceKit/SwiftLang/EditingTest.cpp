@@ -114,7 +114,7 @@ public:
                                  SourceKit::createSwiftLangSupport,
                                  /*dispatchOnMain=*/false);
     auto localDocUpdState = std::make_shared<DocUpdateMutexState>();
-    Ctx->getNotificationCenter().addDocumentUpdateNotificationReceiver(
+    Ctx->getNotificationCenter()->addDocumentUpdateNotificationReceiver(
         [localDocUpdState](StringRef docName) {
           std::unique_lock<std::mutex> lk(localDocUpdState->Mtx);
           localDocUpdState->HasUpdate = true;
@@ -133,11 +133,11 @@ public:
   }
 
   void addNotificationReceiver(DocumentUpdateNotificationReceiver Receiver) {
-    Ctx->getNotificationCenter().addDocumentUpdateNotificationReceiver(Receiver);
+    Ctx->getNotificationCenter()->addDocumentUpdateNotificationReceiver(Receiver);
   }
 
   bool waitForDocUpdate(bool reset = false) {
-    std::chrono::seconds secondsToWait(10);
+    std::chrono::seconds secondsToWait(20);
     std::unique_lock<std::mutex> lk(DocUpdState->Mtx);
     auto when = std::chrono::system_clock::now() + secondsToWait;
     auto result = !DocUpdState->CV.wait_until(
@@ -266,8 +266,7 @@ void EditTest::doubleOpenWithDelay(useconds_t delay, bool closeDoc) {
   close(DocName);
 }
 
-// This test is failing occassionally in CI: rdar://42483323
-TEST_F(EditTest, DISABLED_DiagsAfterCloseAndReopen) {
+TEST_F(EditTest, DiagsAfterCloseAndReopen) {
   // Attempt to open the same file twice in a row. This tests (subject to
   // timing) cases where:
   // * the 2nd open happens before the first AST starts building

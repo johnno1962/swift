@@ -135,12 +135,31 @@ struct PrintOptions {
   /// \brief Whether to print *any* accessors on properties.
   bool PrintPropertyAccessors = true;
 
-  /// \brief Whether to print the accessors of a property abstractly,
-  /// i.e. always as get and set rather than the specific accessors
-  /// actually used to implement the property.
+  /// Whether to print the accessors of a property abstractly,
+  /// i.e. always as:
+  /// ```
+  /// var x: Int { get set }
+  /// ```
+  /// rather than the specific accessors actually used to implement the
+  /// property.
   ///
   /// Printing function definitions takes priority over this setting.
   bool AbstractAccessors = true;
+
+  /// Whether to print a property with only a single getter using the shorthand
+  /// ```
+  /// var x: Int { return y }
+  /// ```
+  /// vs.
+  /// ```
+  /// var x: Int {
+  ///   get { return y }
+  /// }
+  /// ```
+  bool CollapseSingleGetterProperty = true;
+
+  /// Whether to print the bodies of accessors in protocol context.
+  bool PrintAccessorBodiesInProtocols = false;
 
   /// \brief Whether to print type definitions.
   bool TypeDefinitions = false;
@@ -169,6 +188,10 @@ struct PrintOptions {
   /// \brief Print Swift.Array and Swift.Optional with sugared syntax
   /// ([] and ?), even if there are no sugar type nodes.
   bool SynthesizeSugarOnTypes = false;
+
+  /// \brief If true, null types in the AST will be printed as "<null>". If
+  /// false, the compiler will trap.
+  bool AllowNullTypes = true;
 
   /// \brief If true, the printer will explode a pattern like this:
   /// \code
@@ -426,13 +449,13 @@ struct PrintOptions {
     return result;
   }
 
-  /// Retrieve the set of options suitable for stable textual interfaces.
+  /// Retrieve the set of options suitable for parseable module interfaces.
   ///
   /// This is a format that will be parsed again later, so the output must be
   /// consistent and well-formed.
   ///
-  /// \see swift::emitModuleInterface
-  static PrintOptions printTextualInterfaceFile();
+  /// \see swift::emitParseableInterface
+  static PrintOptions printParseableInterfaceFile();
 
   static PrintOptions printModuleInterface();
   static PrintOptions printTypeInterface(Type T);

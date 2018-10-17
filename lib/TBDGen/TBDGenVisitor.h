@@ -66,6 +66,7 @@ private:
 
   void addProtocolRequirementsBaseDescriptor(ProtocolDecl *proto);
   void addAssociatedTypeDescriptor(AssociatedTypeDecl *assocType);
+  void addAssociatedConformanceDescriptor(AssociatedConformance conformance);
 
 public:
   TBDGenVisitor(tapi::internal::InterfaceFile &symbols,
