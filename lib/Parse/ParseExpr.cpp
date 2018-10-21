@@ -1789,7 +1789,8 @@ static StringLiteralExpr *
 createStringLiteralExprFromSegment(ASTContext &Ctx,
                                    const Lexer *L,
                                    Lexer::StringSegment &Segment,
-                                   SourceLoc TokenLoc) {
+                                   SourceLoc TokenLoc,
+                                   bool IsCharacterLiteral = false) {
   assert(Segment.Kind == Lexer::StringSegment::Literal);
   // FIXME: Consider lazily encoding the string when needed.
   llvm::SmallString<256> Buf;
@@ -1799,7 +1800,8 @@ createStringLiteralExprFromSegment(ASTContext &Ctx,
            "Returned string is not from buffer?");
     EncodedStr = Ctx.AllocateCopy(EncodedStr);
   }
-  return new (Ctx) StringLiteralExpr(EncodedStr, TokenLoc);
+  return new (Ctx) StringLiteralExpr(EncodedStr, TokenLoc,
+                                     false, IsCharacterLiteral);
 }
 
 ParserStatus Parser::
@@ -2017,9 +2019,11 @@ ParserResult<Expr> Parser::parseExprStringLiteral() {
   // The simple case: just a single literal segment.
   if (Segments.size() == 1 &&
       Segments.front().Kind == Lexer::StringSegment::Literal) {
+    bool IsCharacterLiteral = EntireTok.getText()[0] == '\'';
     consumeToken();
     return makeParserResult(
-        createStringLiteralExprFromSegment(Context, L, Segments.front(), Loc));
+        createStringLiteralExprFromSegment(Context, L, Segments.front(), Loc,
+                                           IsCharacterLiteral));
   }
 
   // We are now sure this is a string interpolation expression.

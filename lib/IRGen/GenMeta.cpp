@@ -4033,6 +4033,7 @@ SpecialProtocol irgen::getSpecialProtocolID(ProtocolDecl *P) {
   case KnownProtocolKind::ExpressibleByFloatLiteral:
   case KnownProtocolKind::ExpressibleByIntegerLiteral:
   case KnownProtocolKind::ExpressibleByCodepointLiteral:
+  case KnownProtocolKind::ExpressibleByCharacterLiteral:
   case KnownProtocolKind::ExpressibleByStringInterpolation:
   case KnownProtocolKind::ExpressibleByStringLiteral:
   case KnownProtocolKind::ExpressibleByNilLiteral:
