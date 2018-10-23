@@ -767,10 +767,10 @@ extension Substring : TextOutputStreamable {
   }
 }
 
-extension Substring : ExpressibleByUnicodeScalarLiteral {
-  @inlinable
-  public init(unicodeScalarLiteral value: String) {
-     self.init(value)
+extension Substring : ExpressibleByLegacyUnicodeScalarLiteral {
+  @inlinable // FIXME(sil-serialize-all)
+  public init(legacyUnicodeScalarLiteral value: String) {
+     self.init(_base: value, value.startIndex ..< value.endIndex)
   }
 }
 extension Substring : ExpressibleByExtendedGraphemeClusterLiteral {
