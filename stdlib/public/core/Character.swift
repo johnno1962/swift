@@ -107,9 +107,9 @@ extension Character {
   }
 }
 
-extension Character :
-  _ExpressibleByBuiltinExtendedGraphemeClusterLiteral,
-  ExpressibleByExtendedGraphemeClusterLiteral
+extension Character
+ : _ExpressibleByBuiltinExtendedGraphemeClusterLiteral,
+   _LegacyExpressibleByExtendedGraphemeClusterLiteral
 {
   /// Creates a character containing the given Unicode scalar value.
   ///
@@ -255,14 +255,14 @@ extension String {
         return string
     }
 }
-extension Character {
-    @_transparent 
-    public static func + (lhs: Character, rhs: Character) -> String {
-        return String(lhs) + rhs
-    }
-    
-    @_transparent 
-    public static func * (repeatedValue: Character, count: Int) -> String {
-        return String(repeatElement(repeatedValue, count: count))
-    }
-}
+//extension Character {
+//    @_transparent
+//    public static func + (lhs: Character, rhs: Character) -> String {
+//        return String(lhs) + rhs
+//    }
+//
+//    @_transparent
+//    public static func * (repeatedValue: Character, count: Int) -> String {
+//        return String(repeatElement(repeatedValue, count: count))
+//    }
+//}

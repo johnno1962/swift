@@ -767,13 +767,13 @@ extension Substring : TextOutputStreamable {
   }
 }
 
-extension Substring : ExpressibleByUnicodeScalarLiteral {
-  @inlinable // FIXME(sil-serialize-all)
-  public init(unicodeScalarLiteral value: String) {
-     self.init(_base: value, value.startIndex ..< value.endIndex)
+extension Substring : _LegacyExpressibleByUnicodeScalarLiteral {
+  @inlinable
+  public init(legacyUnicodeScalarLiteral value: String) {
+    self.init(value)
   }
 }
-extension Substring : ExpressibleByExtendedGraphemeClusterLiteral {
+extension Substring : _LegacyExpressibleByExtendedGraphemeClusterLiteral {
   @inlinable
   public init(extendedGraphemeClusterLiteral value: String) {
      self.init(value)

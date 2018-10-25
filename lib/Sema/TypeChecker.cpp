@@ -103,7 +103,7 @@ ProtocolDecl *TypeChecker::getLiteralProtocol(Expr *expr) {
   
   if (auto e = dyn_cast<IntegerLiteralExpr>(expr))
     return getProtocol(expr->getLoc(), e->isCodepoint() ?
-                       KnownProtocolKind::ExpressibleByCodepointLiteral :
+                       KnownProtocolKind::ExpressibleByUnicodeScalarLiteral :
                        KnownProtocolKind::ExpressibleByIntegerLiteral);
 
   if (isa<FloatLiteralExpr>(expr))
@@ -118,13 +118,13 @@ ProtocolDecl *TypeChecker::getLiteralProtocol(Expr *expr) {
     if (SLE->isSingleUnicodeScalar())
       return getProtocol(
           expr->getLoc(),
-          KnownProtocolKind::ExpressibleByUnicodeScalarLiteral);
+          KnownProtocolKind::LegacyExpressibleByUnicodeScalarLiteral);
 
     if (SLE->isSingleExtendedGraphemeCluster())
       return getProtocol(
           expr->getLoc(), SLE->isCharacterLiteral() ?
           KnownProtocolKind::ExpressibleByCharacterLiteral :
-          KnownProtocolKind::ExpressibleByExtendedGraphemeClusterLiteral);
+          KnownProtocolKind::LegacyExpressibleByExtendedGraphemeClusterLiteral);
 
     return getProtocol(expr->getLoc(),
                        KnownProtocolKind::ExpressibleByStringLiteral);

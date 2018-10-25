@@ -358,8 +358,8 @@ public protocol ExpressibleByBooleanLiteral {
 // hacky way to get Unicode.Scalar as a valid input on ExpressibleByCodepointLiteral 
 // seems to have no side effects
 extension Unicode.Scalar : _ExpressibleByBuiltinIntegerLiteral {
-  @_transparent 
-  public init(_builtinIntegerLiteral value: _MaxBuiltinIntegerType) {
+  @_transparent
+  public init(_builtinIntegerLiteral value: Builtin.IntLiteral) {
     self.init(_value: UInt32(_builtinIntegerLiteral: value))
   }
 }
@@ -369,7 +369,7 @@ public protocol _ExpressibleByBuiltinCharacterLiteral :
 
 extension Character : _ExpressibleByBuiltinCharacterLiteral {}
 
-public protocol ExpressibleByCodepointLiteral {
+public protocol ExpressibleByUnicodeScalarLiteral {
   /// A type that represents a single quoted codepoint literal.
   ///
   associatedtype IntegerLiteralType : _ExpressibleByBuiltinIntegerLiteral
@@ -385,17 +385,17 @@ public protocol ExpressibleByCodepointLiteral {
   /// literal initializer behind the scenes.
   ///
   /// - Parameter value: The value to create.
-  init(codepointLiteral value: IntegerLiteralType)
+  init(unicodeScalarLiteral value: IntegerLiteralType)
 }
 
-public protocol ExpressibleByCharacterLiteral : ExpressibleByCodepointLiteral {
+public protocol ExpressibleByCharacterLiteral : ExpressibleByUnicodeScalarLiteral {
   associatedtype CharacterLiteralType : _ExpressibleByBuiltinCharacterLiteral
   init(characterLiteral value: CharacterLiteralType)
 }
 
 extension ExpressibleByCharacterLiteral where CharacterLiteralType == Character {
-  @_transparent
-  public init(codepointLiteral value: UInt32) {
+// @_transparent
+  public init(unicodeScalarLiteral value: UInt32) {
     self.init(characterLiteral: Character(Unicode.Scalar(_value: value)))
   }
 }
@@ -423,7 +423,7 @@ public protocol _ExpressibleByBuiltinUnicodeScalarLiteral {
 ///
 /// To add `ExpressibleByUnicodeScalarLiteral` conformance to your custom type,
 /// implement the required initializer.
-public protocol ExpressibleByUnicodeScalarLiteral {
+public protocol _LegacyExpressibleByUnicodeScalarLiteral {
   /// A type that represents a Unicode scalar literal.
   ///
   /// Valid types for `UnicodeScalarLiteralType` are `Unicode.Scalar`,
@@ -433,7 +433,7 @@ public protocol ExpressibleByUnicodeScalarLiteral {
   /// Creates an instance initialized to the given value.
   ///
   /// - Parameter value: The value of the new instance.
-  init(unicodeScalarLiteral value: UnicodeScalarLiteralType)
+  init(legacyUnicodeScalarLiteral value: UnicodeScalarLiteralType)
 }
 
 public protocol _ExpressibleByBuiltinExtendedGraphemeClusterLiteral
@@ -455,7 +455,7 @@ public protocol _ExpressibleByBuiltinExtendedGraphemeClusterLiteral
 /// Unicode's boundary algorithms into extended grapheme clusters.
 ///
 /// The `String`, `StaticString`, and `Character` types conform to the
-/// `ExpressibleByExtendedGraphemeClusterLiteral` protocol. You can initialize
+/// `_LegacyExpressibleByExtendedGraphemeClusterLiteral` protocol. You can initialize
 /// a variable or constant of any of these types using a string literal that
 /// holds a single character.
 ///
@@ -463,13 +463,13 @@ public protocol _ExpressibleByBuiltinExtendedGraphemeClusterLiteral
 ///     print(snowflake)
 ///     // Prints "❄︎"
 ///
-/// Conforming to ExpressibleByExtendedGraphemeClusterLiteral
+/// Conforming to _LegacyExpressibleByExtendedGraphemeClusterLiteral
 /// =========================================================
 ///
-/// To add `ExpressibleByExtendedGraphemeClusterLiteral` conformance to your
+/// To add `_LegacyExpressibleByExtendedGraphemeClusterLiteral` conformance to your
 /// custom type, implement the required initializer.
-public protocol ExpressibleByExtendedGraphemeClusterLiteral
-  : ExpressibleByUnicodeScalarLiteral {
+public protocol _LegacyExpressibleByExtendedGraphemeClusterLiteral
+  : _LegacyExpressibleByUnicodeScalarLiteral {
   /// A type that represents an extended grapheme cluster literal.
   ///
   /// Valid types for `ExtendedGraphemeClusterLiteralType` are `Character`,
@@ -483,11 +483,11 @@ public protocol ExpressibleByExtendedGraphemeClusterLiteral
   init(extendedGraphemeClusterLiteral value: ExtendedGraphemeClusterLiteralType)
 }
 
-extension ExpressibleByExtendedGraphemeClusterLiteral
+extension _LegacyExpressibleByExtendedGraphemeClusterLiteral
   where ExtendedGraphemeClusterLiteralType == UnicodeScalarLiteralType {
 
   @_transparent
-  public init(unicodeScalarLiteral value: ExtendedGraphemeClusterLiteralType) {
+  public init(legacyUnicodeScalarLiteral value: ExtendedGraphemeClusterLiteralType) {
     self.init(extendedGraphemeClusterLiteral: value)
   }
 }
@@ -515,7 +515,7 @@ public protocol _ExpressibleByBuiltinStringLiteral
 /// To add `ExpressibleByStringLiteral` conformance to your custom type,
 /// implement the required initializer.
 public protocol ExpressibleByStringLiteral
-  : ExpressibleByExtendedGraphemeClusterLiteral {
+  : _LegacyExpressibleByExtendedGraphemeClusterLiteral {
   
   /// A type that represents a string literal.
   ///

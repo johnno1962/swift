@@ -1836,7 +1836,7 @@ namespace {
       bool IsCodepoint = static_cast<IntegerLiteralExpr *>(expr)->isCodepoint();
       ProtocolDecl *protocol
         = tc.getProtocol(expr->getLoc(), IsCodepoint ?
-                         KnownProtocolKind::ExpressibleByCodepointLiteral :
+                         KnownProtocolKind::ExpressibleByUnicodeScalarLiteral :
                          KnownProtocolKind::ExpressibleByIntegerLiteral);
       ProtocolDecl *builtinProtocol
         = tc.getProtocol(expr->getLoc(),
@@ -1859,7 +1859,7 @@ namespace {
       }
 
       DeclName initName(tc.Context, DeclBaseName::createConstructor(),
-                        { IsCodepoint ? tc.Context.Id_codepointLiteral :
+                        { IsCodepoint ? tc.Context.Id_unicodeScalarLiteral :
                           tc.Context.Id_integerLiteral });
       DeclName builtinInitName(tc.Context, DeclBaseName::createConstructor(),
                                { tc.Context.Id_builtinIntegerLiteral });
@@ -2071,16 +2071,16 @@ namespace {
         protocol = tc.getProtocol(
             expr->getLoc(), isCharacterLiteral ?
             KnownProtocolKind::ExpressibleByCharacterLiteral :
-            KnownProtocolKind::ExpressibleByExtendedGraphemeClusterLiteral);
+            KnownProtocolKind::LegacyExpressibleByExtendedGraphemeClusterLiteral);
         isStringLiteral = false;
         isGraphemeClusterLiteral = true;
       }
       if (!tc.conformsToProtocol(type, protocol, cs.DC,
                                  ConformanceCheckFlags::InExpression)) {
-        // ... or it should be ExpressibleByUnicodeScalarLiteral.
+        // ... or it should be LegacyExpressibleByUnicodeScalarLiteral.
         protocol = tc.getProtocol(
             expr->getLoc(),
-            KnownProtocolKind::ExpressibleByUnicodeScalarLiteral);
+            KnownProtocolKind::LegacyExpressibleByUnicodeScalarLiteral);
         isStringLiteral = false;
         isGraphemeClusterLiteral = false;
       }
@@ -2148,7 +2148,7 @@ namespace {
 
         literalFuncName
           = DeclName(tc.Context, DeclBaseName::createConstructor(),
-                     {tc.Context.Id_unicodeScalarLiteral});
+                     {tc.Context.Id_legacyUnicodeScalarLiteral});
         builtinLiteralFuncName
           = DeclName(tc.Context, DeclBaseName::createConstructor(),
                      {tc.Context.Id_builtinUnicodeScalarLiteral});
