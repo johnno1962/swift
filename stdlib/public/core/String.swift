@@ -842,9 +842,3 @@ extension String {
     }
   }
 }
-
-extension String : ExpressibleByCodepointLiteral {
-  public init(codepointLiteral value: UInt32) {
-    self.init(Unicode.Scalar(_value: value))
-  }
-}
