@@ -1565,6 +1565,7 @@ Type TypeChecker::resolveIdentifierType(
   Type result = resolveIdentTypeComponent(resolution, Components, options);
   if (!result) return nullptr;
 
+//  printf("getDeclContext %p\n", resolution.getDeclContext());
   if (auto moduleTy = result->getAs<ModuleType>()) {
     if (!options.contains(TypeResolutionFlags::SilenceErrors)) {
       auto moduleName = moduleTy->getModule()->getName();

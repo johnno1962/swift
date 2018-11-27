@@ -117,6 +117,7 @@ private:
 
   /// Module - The SIL module that the function belongs to.
   SILModule &Module;
+  SILModule *ModulePtr;
 
   /// The mangled name of the SIL function, which will be propagated
   /// to the binary.  A pointer into the module's lookup table.
@@ -306,6 +307,12 @@ public:
   ~SILFunction();
 
   SILModule &getModule() const { return Module; }
+
+  SILFunction *ReplacedBy = nullptr;
+
+  void setModule(SILModule *SM) {
+    (&ModulePtr)[-1] = SM;
+  }
 
   SILType getLoweredType() const {
     return SILType::getPrimitiveObjectType(LoweredType);
@@ -1013,7 +1020,7 @@ public ilist_node_traits<::swift::SILFunction> {
   using SILFunction = ::swift::SILFunction;
 
 public:
-  static void deleteNode(SILFunction *V) { V->~SILFunction(); }
+  static void deleteNode(SILFunction *V) { }//V->~SILFunction(); }
 
 private:
   void createNode(const SILFunction &);

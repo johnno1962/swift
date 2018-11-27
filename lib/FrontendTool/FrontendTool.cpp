@@ -817,6 +817,18 @@ generateSILModules(CompilerInvocation &Invocation, CompilerInstance &Instance) {
     return SASTF && SASTF->isSIB();
   };
 
+  if (auto SM = Instance.takePrevSILModule()) {
+    // Merge newly type checked functions that haev changed into SIL module.
+    auto SM2 = performSILGeneration(mod, SILOpts);
+    SM->mergeNewSilModule(std::move(SM2));
+    std::deque<PostSILGenInputs> PSGIs;
+    const PrimarySpecificPaths PSPs =
+    Instance.getPrimarySpecificPathsForWholeModuleOptimizationMode();
+    PSGIs.push_back(PostSILGenInputs{
+      std::move(SM), llvm::none_of(mod->getFiles(), fileIsSIB), mod, PSPs});
+    return PSGIs;
+  }
+
   if (!opts.InputsAndOutputs.hasPrimaryInputs()) {
     // If there are no primary inputs the compiler is in WMO mode and builds one
     // SILModule for the entire module.
@@ -1343,6 +1355,12 @@ static bool performCompileStepsPostSILGen(
   // We've been told to write canonical SIL, so write it now.
   if (Action == FrontendOptions::ActionType::EmitSIL)
     return writeSIL(*SM, PSPs, Instance, Invocation);
+
+  {
+    const FrontendOptions &opts = Invocation.getFrontendOptions();
+    writeSIL(*SM, 1 ? SM->getSwiftModule() : Instance.getMainModule(),
+             opts.EmitVerboseSIL, PSPs.OutputFilename+".sil", opts.EmitSortedSIL);
+  }
 
   assert(Action >= FrontendOptions::ActionType::Immediate &&
          "All actions not requiring IRGen must have been handled!");

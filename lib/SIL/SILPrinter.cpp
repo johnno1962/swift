@@ -82,6 +82,8 @@ enum SILColorKind {
 
 namespace {
 /// RAII based coloring of SIL output.
+static bool SILNotTTY;
+
 class SILColor {
   raw_ostream &OS;
   enum raw_ostream::Colors Color;
@@ -89,7 +91,9 @@ public:
 #define DEF_COL(NAME, RAW) case NAME: Color = raw_ostream::RAW; break;
 
   explicit SILColor(raw_ostream &OS, SILColorKind K) : OS(OS) {
-    if (!OS.has_colors() || SILPrintNoColor)
+    if (!SILNotTTY)
+      SILNotTTY = !OS.has_colors();
+    if (SILNotTTY || SILPrintNoColor)
       return;
     switch (K) {
       DEF_COL(SC_Type, YELLOW)
@@ -99,7 +103,9 @@ public:
   }
 
   explicit SILColor(raw_ostream &OS, ID::ID_Kind K) : OS(OS) {
-    if (!OS.has_colors() || SILPrintNoColor)
+    if (!SILNotTTY)
+      SILNotTTY = !OS.has_colors();
+    if (SILNotTTY || SILPrintNoColor)
       return;
     switch (K) {
       DEF_COL(ID::SILUndef, RED)
@@ -112,7 +118,7 @@ public:
   }
   
   ~SILColor() {
-    if (!OS.has_colors() || SILPrintNoColor)
+    if (SILNotTTY || SILPrintNoColor)
       return;
     // FIXME: instead of resetColor(), we can look into
     // capturing the current active color and restoring it.

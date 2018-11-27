@@ -480,6 +480,10 @@ std::unique_ptr<SILModule> CompilerInstance::takeSILModule() {
   return std::move(TheSILModule);
 }
 
+std::unique_ptr<SILModule> CompilerInstance::takePrevSILModule() {
+  return std::move(PrevSILModule);
+}
+
 ModuleDecl *CompilerInstance::getMainModule() {
   if (!MainModule) {
     Identifier ID = Context->getIdentifier(Invocation.getModuleName());
@@ -862,7 +866,10 @@ bool CompilerInstance::parsePartialModulesAndLibraryFiles(
   return hadLoadError;
 }
 
-void CompilerInstance::parseAndTypeCheckMainFileUpTo(
+#include <iostream>
+#include <fstream>
+
+void CompilerInstance::parseAndTypeCheckMainFileUpTo( ////
     SourceFile::ASTStage_t LimitStage,
     PersistentParserState &PersistentState,
     DelayedParsingCallbacks *DelayedParseCB,
@@ -878,6 +885,115 @@ void CompilerInstance::parseAndTypeCheckMainFileUpTo(
   auto &Diags = MainFile.getASTContext().Diags;
   auto DidSuppressWarnings = Diags.getSuppressWarnings();
   Diags.setSuppressWarnings(DidSuppressWarnings || !mainIsPrimary);
+  std::map<std::string, AbstractFunctionDecl *> PreviousMap;
+#define DOSIL
+  Invocation.getSILOptions().AssumeUnqualifiedOwnershipWhenParsing = true;
+  llvm::raw_fd_ostream OS(fileno(stdout), false);
+  const auto FileSystem = SourceMgr.getFileSystem();
+  auto getText = [&](SourceRange Range) {
+    const char *start = static_cast<const char *>(Range.Start.getOpaquePointerValue());
+    const char *end = static_cast<const char *>(Range.End.getOpaquePointerValue());
+    return StringRef(start, end-start);
+  };
+
+  std::string Filename = MainFile.getFilename().str();
+  std::string Root = Filename.substr(0,Filename.find_last_of('.'));
+  std::string PrevFilename = Root+".o.swift";
+  auto inputFileOrErr = swift::vfs::getFileOrSTDIN(*FileSystem, PrevFilename);
+  auto inputFileOrErrSIL = swift::vfs::getFileOrSTDIN(*FileSystem, Root+".o.sil");
+  auto CopyMainSource = [&] () {
+    StringRef MainSource = Context->SourceMgr
+      .getEntireTextForBuffer(MainFile.getBufferID().getValue());
+    std::ofstream myfile;
+    myfile.open(PrevFilename.c_str());
+    myfile.write(MainSource.data(), MainSource.size());
+    myfile.close();
+  };
+  if (!inputFileOrErr)
+    CopyMainSource();
+
+  if (Invocation.getSourceFileKind() != SourceFileKind::SIL &&
+      inputFileOrErrSIL && inputFileOrErr) {
+#if 01
+    unsigned BufferId = SourceMgr.addNewSourceBuffer(std::move(*inputFileOrErr));
+      CopyMainSource();
+
+    Identifier ID = Context->getIdentifier(Invocation.getModuleName());
+    ModuleDecl *PrevModule = ModuleDecl::create(ID, *Context);
+    SourceFile &PrevFile = *new (*Context)
+    SourceFile(*PrevModule, SourceFileKind::Main, BufferId,
+               SourceFile::ImplicitModuleImportKind::Stdlib,
+               Invocation.getLangOptions().CollectParsedToken,
+               Invocation.getLangOptions().BuildSyntaxTree);
+
+    unsigned PrevCurTUElem = 0;
+    bool PrevDone;
+    do {
+      parseIntoSourceFile(PrevFile, PrevFile.getBufferID().getValue(), &PrevDone,
+                          /*TheSILModule ? &SILContext :*/ nullptr, &PersistentState,
+                          DelayedParseCB);
+
+      for (unsigned i = PrevCurTUElem; i<PrevFile.Decls.size() ; i++)
+        if (auto F = dyn_cast<AbstractFunctionDecl>(PrevFile.Decls[i]))
+          PreviousMap[getText(F->getSourceRange())] = F;
+
+      PrevCurTUElem = PrevFile.Decls.size();
+    } while (!PrevDone);
+
+    printf("%d #0\n", PrevCurTUElem);
+#endif
+#ifdef DOSIL
+    unsigned SILBufferId = SourceMgr.addNewSourceBuffer(std::move(*inputFileOrErrSIL));
+    Invocation.setInputKind(InputFileKind::SIL);
+
+    Identifier ID2 = Context->getIdentifier(Invocation.getModuleName());
+    ModuleDecl *SILModule = ModuleDecl::create(ID2, *Context);
+
+//    SILModule = MainModule;
+//    printf("%p %p?\n", SILModule, getMainModule());
+
+    SourceFile &SILFile = *new (*Context)
+    SourceFile(*SILModule, SourceFileKind::SIL, SILBufferId,
+               SourceFile::ImplicitModuleImportKind::None,
+               Invocation.getLangOptions().CollectParsedToken,
+               Invocation.getLangOptions().BuildSyntaxTree);
+
+//    createSILModule();
+    PrevSILModule = SILModule::createEmptyModule(
+        SILModule, Invocation.getSILOptions(),
+        Invocation.getFrontendOptions().InputsAndOutputs.isWholeModule());
+
+    auto Imports1 = SourceFile::ImportedModuleDesc(
+            ModuleDecl::ImportedModule({}, Context->TheBuiltinModule), SourceFile::ImportOptions());
+    SILFile.addImports(Imports1);
+    auto Imports2 = SourceFile::ImportedModuleDesc(
+            ModuleDecl::ImportedModule({}, Context->getStdlibModule(true)), SourceFile::ImportOptions());
+    SILFile.addImports(Imports2);
+
+    PersistentParserState SILPersistentState(*Context);
+    SILParserState PrevSILContext(PrevSILModule.get());
+    unsigned SILCurTUElem = 0;
+    bool SILDone;
+    do {
+      parseIntoSourceFile(SILFile, SILFile.getBufferID().getValue(), &SILDone,
+                          &PrevSILContext, &SILPersistentState,
+                          DelayedParseCB);
+
+//      const auto &options = Invocation.getFrontendOptions();
+//      performTypeChecking(SILFile, SILPersistentState.getTopLevelContext(),
+//                          TypeCheckOptions, SILCurTUElem,
+//                          options.WarnLongFunctionBodies,
+//                          options.WarnLongExpressionTypeChecking,
+//                          options.SolverExpressionTimeThreshold,
+//                          options.SwitchCheckingInvocationThreshold,
+//                          &PreviousMap, true);
+
+      SILCurTUElem = SILFile.Decls.size();
+    } while (!SILDone);
+
+    printf("%d #1\n", SILCurTUElem);
+#endif
+  }
 
   SILParserState SILContext(TheSILModule.get());
   unsigned CurTUElem = 0;
@@ -906,13 +1022,19 @@ void CompilerInstance::parseAndTypeCheckMainFileUpTo(
                             options.WarnLongFunctionBodies,
                             options.WarnLongExpressionTypeChecking,
                             options.SolverExpressionTimeThreshold,
-                            options.SwitchCheckingInvocationThreshold);
+                            options.SwitchCheckingInvocationThreshold,
+                            &PreviousMap, false);
         break;
       }
     }
 
     CurTUElem = MainFile.Decls.size();
   } while (!Done);
+
+  printf("%d #2\n", CurTUElem);
+//  for (auto d : MainFile.Decls) {
+//    d->dump(OS);
+//  }
 
   Diags.setSuppressWarnings(DidSuppressWarnings);
 

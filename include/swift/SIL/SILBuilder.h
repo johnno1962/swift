@@ -772,9 +772,9 @@ public:
 
   StoreInst *createStore(SILLocation Loc, SILValue Src, SILValue DestAddr,
                          StoreOwnershipQualifier Qualifier) {
-    assert((Qualifier != StoreOwnershipQualifier::Unqualified) ||
-           !getFunction().hasQualifiedOwnership() &&
-               "Unqualified inst in qualified function");
+//    assert((Qualifier != StoreOwnershipQualifier::Unqualified) ||
+//           !getFunction().hasQualifiedOwnership() &&
+//               "Unqualified inst in qualified function");
     assert((Qualifier == StoreOwnershipQualifier::Unqualified) ||
            getFunction().hasQualifiedOwnership() &&
                "Qualified inst in unqualified function");

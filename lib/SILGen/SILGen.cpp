@@ -808,6 +808,8 @@ void SILGenModule::emitAbstractFuncDecl(AbstractFunctionDecl *AFD) {
 
 void SILGenModule::emitFunction(FuncDecl *fd) {
   SILDeclRef::Loc decl = fd;
+  if (fd->Unchanged)
+    return;
 
   emitAbstractFuncDecl(fd);
 

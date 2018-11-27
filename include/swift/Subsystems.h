@@ -29,6 +29,8 @@
 
 #include <memory>
 
+#include <map>
+
 namespace llvm {
   class GlobalVariable;
   class MemoryBuffer;
@@ -67,6 +69,7 @@ namespace swift {
   struct TypeLoc;
   class UnifiedStatsReporter;
   enum class SourceFileKind;
+  class AbstractFunctionDecl;
 
   /// Used to optionally maintain SIL parsing context for the parser.
   ///
@@ -193,7 +196,9 @@ namespace swift {
                            unsigned WarnLongFunctionBodies = 0,
                            unsigned WarnLongExpressionTypeChecking = 0,
                            unsigned ExpressionTimeoutThreshold = 0,
-                           unsigned SwitchCheckingInvocationThreshold = 0);
+                           unsigned SwitchCheckingInvocationThreshold = 0,
+    std::map<std::string, AbstractFunctionDecl *> *PreviousMap = nullptr,
+                                               bool MapForward = true);
 
   /// Now that we have type-checked an entire module, perform any type
   /// checking that requires the full module, e.g., Objective-C method

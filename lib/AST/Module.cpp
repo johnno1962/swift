@@ -995,6 +995,7 @@ void ModuleDecl::getImportedModules(SmallVectorImpl<ImportedModule> &modules,
 void
 SourceFile::getImportedModules(SmallVectorImpl<ModuleDecl::ImportedModule> &modules,
                                ModuleDecl::ImportFilter filter) const {
+//  printf("???? %p %d %s\n", this, Kind, getFilename().str().c_str());
   assert(ASTStage >= Parsed || Kind == SourceFileKind::SIL);
   for (auto desc : Imports) {
     switch (filter) {

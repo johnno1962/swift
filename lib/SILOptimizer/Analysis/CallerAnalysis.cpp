@@ -229,7 +229,7 @@ FunctionInfo &CallerAnalysis::getOrInsertFunctionInfo(SILFunction *f) {
 }
 
 FunctionInfo &CallerAnalysis::unsafeGetFunctionInfo(SILFunction *f) {
-  auto r = funcInfos.find(f);
+  auto r = funcInfos.find(mod.lookUpFunction(f->getName()));
   assert(r != funcInfos.end() && "Function does not have functionInfo!");
   return r->second;
 }

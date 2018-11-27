@@ -367,7 +367,7 @@ class CompilerInstance {
   SourceManager SourceMgr;
   DiagnosticEngine Diagnostics{SourceMgr};
   std::unique_ptr<ASTContext> Context;
-  std::unique_ptr<SILModule> TheSILModule;
+  std::unique_ptr<SILModule> TheSILModule, PrevSILModule;
 
   /// Null if no tracker.
   std::unique_ptr<DependencyTracker> DepTracker;
@@ -460,6 +460,7 @@ public:
   }
 
   std::unique_ptr<SILModule> takeSILModule();
+  std::unique_ptr<SILModule> takePrevSILModule();
 
   bool hasSILModule() {
     return static_cast<bool>(TheSILModule);

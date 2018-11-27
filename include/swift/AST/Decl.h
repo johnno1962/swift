@@ -5230,6 +5230,8 @@ protected:
   }
 
 public:
+  bool Unchanged = false;
+
   /// Returns the string for the base name, or "_" if this is unnamed.
   StringRef getNameStr() const {
     assert(!getFullName().isSpecial() && "Cannot get string for special names");

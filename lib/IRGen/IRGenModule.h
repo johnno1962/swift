@@ -393,6 +393,8 @@ public:
 
   unsigned getFunctionOrder(SILFunction *F) {
     auto it = FunctionOrder.find(F);
+    if (it == FunctionOrder.end())
+      it = FunctionOrder.find(F->ReplacedBy);
     assert(it != FunctionOrder.end() &&
            "no order number for SIL function definition?");
     return it->second;

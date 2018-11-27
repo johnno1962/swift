@@ -572,6 +572,63 @@ lookUpFunctionInVTable(ClassDecl *Class, SILDeclRef Member) {
   return nullptr;
 }
 
+void SILModule::mergeNewSilModule(std::unique_ptr<SILModule> NewSILModule) {
+  llvm::raw_fd_ostream OS(fileno(stdout), false);
+
+  std::vector<SILFunction *> replacements;
+  std::map<std::string,unsigned> indexMap;
+  for (auto &F : functions) {
+//    printf("%p %s !\n", &F, F.getName().str().c_str());
+    indexMap[F.getName()] = replacements.size();
+    replacements.push_back(&F);
+  }
+
+  for (auto &NF : NewSILModule->getFunctions()) {
+//    printf("%p %s %d !!\n", &F, F.getName().str().c_str(), F.getBlocks().size());
+    auto entry = indexMap.find(NF.getName());
+    if (entry != indexMap.end()) {
+      unsigned i = entry->second;
+      if (NF.begin() == NF.end()) {
+        NF.ReplacedBy = replacements[i];
+//        printf("SKipping %s %ld\n", NF.getName().str().c_str(),
+//               std::distance(NF.begin(), NF.end()));
+        continue;
+      }
+      replacements[i]->ReplacedBy = &NF;
+      replacements[i] = &NF;
+      NF.setModule(this);
+    }
+  }
+
+  clearFunctions();
+  NewSILModule->clearFunctions();
+
+  for (auto F : replacements/*this->NewSILModule->getFunctions()*/) {
+    functions.push_back(F);
+    FunctionTable[F->getName()] = F;
+  }
+
+//  printf("????@@@@ %lu\n", replacements.size());
+//  for (auto F : replacements) {
+//    printf("IIII %s\n", F->getName().str().c_str());
+////    F->print(OS);
+//    for (auto &BB : *F)
+//      for (SILInstruction &I : BB) {
+////        I.print(OS);
+//        if (auto R = dyn_cast<FunctionRefBaseInst>(&I)) {
+//          auto RF = R->getReferencedFunction();
+//          printf("JJJJJJ %s %p\n", RF->getName().str().c_str(), RF);
+//          R->setReferencedFunction(FunctionTable[RF->getName()]?:RF);
+//        }
+//      }
+//  }
+
+  Stage = SILStage::Raw;
+  this->NewSILModule = std::move(NewSILModule);
+
+//  this->print(OS);
+}
+
 void SILModule::registerDeserializationNotificationHandler(
     std::unique_ptr<DeserializationNotificationHandler> &&handler) {
   deserializationNotificationHandlers.add(std::move(handler));

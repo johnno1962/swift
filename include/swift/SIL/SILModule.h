@@ -149,6 +149,8 @@ private:
   /// The swift Module associated with this SILModule.
   ModuleDecl *TheSwiftModule;
 
+  std::unique_ptr<SILModule> NewSILModule;
+
   /// A specific context for AST-level declarations associated with this SIL
   /// module.
   ///
@@ -275,6 +277,12 @@ private:
 
 public:
   ~SILModule();
+
+  void mergeNewSilModule(std::unique_ptr<SILModule> NewSILModule);
+
+  void clearFunctions() {
+    functions.clear();
+  }
 
   /// Add a callback for each newly deserialized SIL function body.
   void registerDeserializationNotificationHandler(

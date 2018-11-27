@@ -1844,7 +1844,7 @@ void IRGenSILFunction::visitSILBasicBlock(SILBasicBlock *BB) {
 }
 
 void IRGenSILFunction::visitFunctionRefBaseInst(FunctionRefBaseInst *i) {
-  auto fn = i->getReferencedFunction();
+  auto fn = i->getReferencedFunction()->ReplacedBy ?: i->getReferencedFunction();
 
   llvm::Constant *fnPtr = IGM.getAddrOfSILFunction(
       fn, NotForDefinition, false /*isDynamicallyReplaceableImplementation*/,

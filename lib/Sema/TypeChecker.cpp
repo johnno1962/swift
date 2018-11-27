@@ -419,7 +419,9 @@ static void bindExtensions(SourceFile &SF, TypeChecker &TC) {
   // typeCheckDecl().
 }
 
-static void typeCheckFunctionsAndExternalDecls(SourceFile &SF, TypeChecker &TC) {
+static void typeCheckFunctionsAndExternalDecls(SourceFile &SF, TypeChecker &TC,
+    std::map<std::string, AbstractFunctionDecl *> *PreviousMap = nullptr,
+                                               bool MapForward = true) {
   unsigned currentFunctionIdx = 0;
   unsigned currentExternalDef = TC.Context.LastCheckedExternalDefinition;
   unsigned currentSynthesizedDecl = SF.LastCheckedSynthesizedDecl;
@@ -447,7 +449,24 @@ static void typeCheckFunctionsAndExternalDecls(SourceFile &SF, TypeChecker &TC) 
          ++currentFunctionIdx) {
       auto *AFD = TC.definedFunctions[currentFunctionIdx];
 
-      TC.typeCheckAbstractFunctionBody(AFD);
+      if (!MapForward) {
+        auto getText = [&](SourceRange Range) {
+          const char *start = static_cast<const char *>(Range.Start.getOpaquePointerValue());
+          const char *end = static_cast<const char *>(Range.End.getOpaquePointerValue());
+//          printf("%p -> %p %s\n",
+//                 Range.Start.getOpaquePointerValue(), Range.End.getOpaquePointerValue(),
+//                 StringRef(start, 100).str().c_str());
+          return StringRef(start, end-start);
+        };
+
+        if (PreviousMap->find(getText(AFD->getSourceRange())) != PreviousMap->end())
+          AFD->Unchanged = true;
+        else
+          TC.typeCheckAbstractFunctionBody(AFD); ////
+      }
+      else {
+        TC.typeCheckAbstractFunctionBody(AFD); ////
+      }
     }
 
     // Type check external definitions.
@@ -594,7 +613,9 @@ void swift::performTypeChecking(SourceFile &SF, TopLevelContext &TLC,
                                 unsigned WarnLongFunctionBodies,
                                 unsigned WarnLongExpressionTypeChecking,
                                 unsigned ExpressionTimeoutThreshold,
-                                unsigned SwitchCheckingInvocationThreshold) {
+                                unsigned SwitchCheckingInvocationThreshold,
+    std::map<std::string, AbstractFunctionDecl *> *PreviousMap,
+                                               bool MapForward) {
   if (SF.ASTStage == SourceFile::TypeChecked)
     return;
 
@@ -669,7 +690,7 @@ void swift::performTypeChecking(SourceFile &SF, TopLevelContext &TLC,
     if (SF.Kind == SourceFileKind::REPL && !Ctx.hadError())
       TC.processREPLTopLevel(SF, TLC, StartElem);
 
-    typeCheckFunctionsAndExternalDecls(SF, TC);
+    typeCheckFunctionsAndExternalDecls(SF, TC, PreviousMap, MapForward);
   }
 
   // Checking that benefits from having the whole module available.
