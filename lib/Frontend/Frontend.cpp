@@ -958,7 +958,8 @@ void CompilerInstance::parseAndTypeCheckMainFileUpTo( ////
                Invocation.getLangOptions().CollectParsedToken,
                Invocation.getLangOptions().BuildSyntaxTree);
 
-//    createSILModule();
+    SILModule->addFile(SILFile);
+
     PrevSILModule = SILModule::createEmptyModule(
         SILModule, Invocation.getSILOptions(),
         Invocation.getFrontendOptions().InputsAndOutputs.isWholeModule());
@@ -979,14 +980,14 @@ void CompilerInstance::parseAndTypeCheckMainFileUpTo( ////
                           &PrevSILContext, &SILPersistentState,
                           DelayedParseCB);
 
-//      const auto &options = Invocation.getFrontendOptions();
-//      performTypeChecking(SILFile, SILPersistentState.getTopLevelContext(),
-//                          TypeCheckOptions, SILCurTUElem,
-//                          options.WarnLongFunctionBodies,
-//                          options.WarnLongExpressionTypeChecking,
-//                          options.SolverExpressionTimeThreshold,
-//                          options.SwitchCheckingInvocationThreshold,
-//                          &PreviousMap, true);
+      const auto &options = Invocation.getFrontendOptions();
+      performTypeChecking(SILFile, SILPersistentState.getTopLevelContext(),
+                          TypeCheckOptions, SILCurTUElem,
+                          options.WarnLongFunctionBodies,
+                          options.WarnLongExpressionTypeChecking,
+                          options.SolverExpressionTimeThreshold,
+                          options.SwitchCheckingInvocationThreshold,
+                          &PreviousMap, true);
 
       SILCurTUElem = SILFile.Decls.size();
     } while (!SILDone);

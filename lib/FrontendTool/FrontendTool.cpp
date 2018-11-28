@@ -817,10 +817,10 @@ generateSILModules(CompilerInvocation &Invocation, CompilerInstance &Instance) {
     return SASTF && SASTF->isSIB();
   };
 
-  if (auto SM = Instance.takePrevSILModule()) {
+  if (auto OSM = Instance.takePrevSILModule()) {
     // Merge newly type checked functions that haev changed into SIL module.
-    auto SM2 = performSILGeneration(mod, SILOpts);
-    SM->mergeNewSilModule(std::move(SM2));
+    auto SM = performSILGeneration(mod, SILOpts);
+    SM->mergeNewSilModule(std::move(OSM));
     std::deque<PostSILGenInputs> PSGIs;
     const PrimarySpecificPaths PSPs =
     Instance.getPrimarySpecificPathsForWholeModuleOptimizationMode();

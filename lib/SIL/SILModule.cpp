@@ -459,6 +459,12 @@ SILVTable *SILModule::lookUpVTable(const ClassDecl *C) {
   if (R != VTableMap.end())
     return R->second;
 
+//  SmallString<64> buffer1, buffer2;
+//  StringRef Name = C->getObjCRuntimeName(buffer1);
+//  for (auto E : VTableMap)
+//    if (Name == E.first->getObjCRuntimeName(buffer2))
+//      return E.second;
+
   // If that fails, try to deserialize it. If that fails, return nullptr.
   SILVTable *Vtbl = getSILLoader()->lookupVTable(C);
   if (!Vtbl)
@@ -584,11 +590,12 @@ void SILModule::mergeNewSilModule(std::unique_ptr<SILModule> NewSILModule) {
   }
 
   for (auto &NF : NewSILModule->getFunctions()) {
-//    printf("%p %s %d !!\n", &F, F.getName().str().c_str(), F.getBlocks().size());
+//    printf("%p %s %d !!\n", &NF, NF.getName().str().c_str(), NF.getBlocks().size());
+    NF.setModule(this);
     auto entry = indexMap.find(NF.getName());
     if (entry != indexMap.end()) {
       unsigned i = entry->second;
-      if (NF.begin() == NF.end()) {
+      if (replacements[i]->begin() != replacements[i]->end()) {
         NF.ReplacedBy = replacements[i];
 //        printf("SKipping %s %ld\n", NF.getName().str().c_str(),
 //               std::distance(NF.begin(), NF.end()));
@@ -596,32 +603,18 @@ void SILModule::mergeNewSilModule(std::unique_ptr<SILModule> NewSILModule) {
       }
       replacements[i]->ReplacedBy = &NF;
       replacements[i] = &NF;
-      NF.setModule(this);
     }
+    else
+      replacements.push_back(&NF);
   }
 
   clearFunctions();
   NewSILModule->clearFunctions();
 
-  for (auto F : replacements/*this->NewSILModule->getFunctions()*/) {
+  for (auto F : replacements) {
     functions.push_back(F);
     FunctionTable[F->getName()] = F;
   }
-
-//  printf("????@@@@ %lu\n", replacements.size());
-//  for (auto F : replacements) {
-//    printf("IIII %s\n", F->getName().str().c_str());
-////    F->print(OS);
-//    for (auto &BB : *F)
-//      for (SILInstruction &I : BB) {
-////        I.print(OS);
-//        if (auto R = dyn_cast<FunctionRefBaseInst>(&I)) {
-//          auto RF = R->getReferencedFunction();
-//          printf("JJJJJJ %s %p\n", RF->getName().str().c_str(), RF);
-//          R->setReferencedFunction(FunctionTable[RF->getName()]?:RF);
-//        }
-//      }
-//  }
 
   Stage = SILStage::Raw;
   this->NewSILModule = std::move(NewSILModule);
