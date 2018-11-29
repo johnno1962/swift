@@ -1513,8 +1513,8 @@ void CallEmission::emitToUnmappedExplosion(Explosion &out) {
   auto expectedNativeResultType = nativeSchema.getExpandedType(IGF.IGM);
   if (result->getType() != expectedNativeResultType) {
     // This should only be needed when we call C functions.
-    assert(getCallee().getOrigFunctionType()->getLanguage() ==
-           SILFunctionLanguage::C);
+//    assert(getCallee().getOrigFunctionType()->getLanguage() ==
+//           SILFunctionLanguage::C);
     result =
         IGF.coerceValue(result, expectedNativeResultType, IGF.IGM.DataLayout);
   }

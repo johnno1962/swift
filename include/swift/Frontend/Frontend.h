@@ -634,6 +634,18 @@ private:
 
   void forEachFileToTypeCheck(llvm::function_ref<void(SourceFile &)> fn);
 
+  std::map<std::string, AbstractFunctionDecl *> PreviousMap;
+
+  void reparsePreviousCompile(SourceFile::ASTStage_t LimitStage,
+                                     PersistentParserState &PersistentState,
+                                     DelayedParsingCallbacks *DelayedParseCB,
+                                     OptionSet<TypeCheckingFlags> TypeCheckOptions);
+
+  void recoverSILFromPreviousCompile(SourceFile::ASTStage_t LimitStage,
+                                     PersistentParserState &PersistentState,
+                                     DelayedParsingCallbacks *DelayedParseCB,
+                                     OptionSet<TypeCheckingFlags> TypeCheckOptions);
+
   void parseAndTypeCheckMainFileUpTo(SourceFile::ASTStage_t LimitStage,
                                      PersistentParserState &PersistentState,
                                      DelayedParsingCallbacks *DelayedParseCB,

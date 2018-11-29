@@ -747,6 +747,11 @@ void CompilerInstance::parseAndCheckTypesUpTo(
 
   OptionSet<TypeCheckingFlags> TypeCheckOptions = computeTypeCheckingOptions();
 
+  reparsePreviousCompile(limitStage, PersistentState,
+                         PrimaryDelayedCB.get(), TypeCheckOptions);
+  recoverSILFromPreviousCompile(limitStage, PersistentState,
+                                PrimaryDelayedCB.get(), TypeCheckOptions);
+
   // Type-check main file after parsing all other files so that
   // it can use declarations from other files.
   // In addition, the main file has parsing and type-checking
@@ -776,7 +781,8 @@ void CompilerInstance::parseAndCheckTypesUpTo(
                         options.WarnLongFunctionBodies,
                         options.WarnLongExpressionTypeChecking,
                         options.SolverExpressionTimeThreshold,
-                        options.SwitchCheckingInvocationThreshold);
+                        options.SwitchCheckingInvocationThreshold,
+                        &PreviousMap);
   });
 
   // Even if there were no source files, we should still record known
@@ -869,30 +875,22 @@ bool CompilerInstance::parsePartialModulesAndLibraryFiles(
 #include <iostream>
 #include <fstream>
 
-void CompilerInstance::parseAndTypeCheckMainFileUpTo( ////
+void CompilerInstance::reparsePreviousCompile(
     SourceFile::ASTStage_t LimitStage,
     PersistentParserState &PersistentState,
     DelayedParsingCallbacks *DelayedParseCB,
     OptionSet<TypeCheckingFlags> TypeCheckOptions) {
-  FrontendStatsTracer tracer(Context->Stats,
-                             "parse-and-typecheck-main-file");
-  bool mainIsPrimary =
-      (isWholeModuleCompilation() || isPrimaryInput(MainBufferID));
+  SourceFile &MainFile = MainBufferID != NO_SUCH_BUFFER ?
+    MainModule->getMainSourceFile(Invocation.getSourceFileKind()) :
+    *PrimarySourceFiles[0];
 
-  SourceFile &MainFile =
-      MainModule->getMainSourceFile(Invocation.getSourceFileKind());
-
-  auto &Diags = MainFile.getASTContext().Diags;
-  auto DidSuppressWarnings = Diags.getSuppressWarnings();
-  Diags.setSuppressWarnings(DidSuppressWarnings || !mainIsPrimary);
-  std::map<std::string, AbstractFunctionDecl *> PreviousMap;
-#define DOSIL
   Invocation.getSILOptions().AssumeUnqualifiedOwnershipWhenParsing = true;
   llvm::raw_fd_ostream OS(fileno(stdout), false);
   const auto FileSystem = SourceMgr.getFileSystem();
   auto getText = [&](SourceRange Range) {
     const char *start = static_cast<const char *>(Range.Start.getOpaquePointerValue());
     const char *end = static_cast<const char *>(Range.End.getOpaquePointerValue());
+//    printf(">>>%s<<<\n", StringRef(start, end-start).str().c_str());
     return StringRef(start, end-start);
   };
 
@@ -912,89 +910,181 @@ void CompilerInstance::parseAndTypeCheckMainFileUpTo( ////
   if (!inputFileOrErr)
     CopyMainSource();
 
-  if (Invocation.getSourceFileKind() != SourceFileKind::SIL &&
-      inputFileOrErrSIL && inputFileOrErr) {
+  if (Invocation.getSourceFileKind() == SourceFileKind::SIL ||
+      !inputFileOrErrSIL || !inputFileOrErr)
+    return;
 #if 01
-    unsigned BufferId = SourceMgr.addNewSourceBuffer(std::move(*inputFileOrErr));
-      CopyMainSource();
+  unsigned BufferId = SourceMgr.addNewSourceBuffer(std::move(*inputFileOrErr));
+    CopyMainSource();
 
-    Identifier ID = Context->getIdentifier(Invocation.getModuleName());
-    ModuleDecl *PrevModule = ModuleDecl::create(ID, *Context);
-    SourceFile &PrevFile = *new (*Context)
-    SourceFile(*PrevModule, SourceFileKind::Main, BufferId,
-               SourceFile::ImplicitModuleImportKind::Stdlib,
-               Invocation.getLangOptions().CollectParsedToken,
-               Invocation.getLangOptions().BuildSyntaxTree);
+  Identifier ID = Context->getIdentifier(Invocation.getModuleName());
+  ModuleDecl *PrevModule = ModuleDecl::create(ID, *Context);
+  SourceFile &PrevFile = *new (*Context)
+  SourceFile(*PrevModule, SourceFileKind::Main, BufferId,
+             SourceFile::ImplicitModuleImportKind::Stdlib,
+             Invocation.getLangOptions().CollectParsedToken,
+             Invocation.getLangOptions().BuildSyntaxTree);
 
-    unsigned PrevCurTUElem = 0;
-    bool PrevDone;
-    do {
-      parseIntoSourceFile(PrevFile, PrevFile.getBufferID().getValue(), &PrevDone,
-                          /*TheSILModule ? &SILContext :*/ nullptr, &PersistentState,
-                          DelayedParseCB);
+  unsigned PrevCurTUElem = 0;
+  bool PrevDone;
+  do {
+    parseIntoSourceFile(PrevFile, PrevFile.getBufferID().getValue(), &PrevDone,
+                        /*TheSILModule ? &SILContext :*/ nullptr, &PersistentState,
+                        DelayedParseCB);
 
-      for (unsigned i = PrevCurTUElem; i<PrevFile.Decls.size() ; i++)
-        if (auto F = dyn_cast<AbstractFunctionDecl>(PrevFile.Decls[i]))
-          PreviousMap[getText(F->getSourceRange())] = F;
+    for (unsigned i = PrevCurTUElem; i<PrevFile.Decls.size() ; i++) {
+      if (auto F = dyn_cast<AbstractFunctionDecl>(PrevFile.Decls[i]))
+        PreviousMap[getText(F->getSourceRange())] = F;
+      if (auto C = dyn_cast<ClassDecl>(PrevFile.Decls[i]))
+        for (auto M : C->getMembers())
+          if (auto F = dyn_cast<AbstractFunctionDecl>(M))
+            PreviousMap[getText(F->getSourceRange())] = F;
+    }
 
-      PrevCurTUElem = PrevFile.Decls.size();
-    } while (!PrevDone);
+    PrevCurTUElem = PrevFile.Decls.size();
+  } while (!PrevDone);
 
-    printf("%d #0\n", PrevCurTUElem);
+  printf("%d #0\n", PrevCurTUElem);
 #endif
-#ifdef DOSIL
-    unsigned SILBufferId = SourceMgr.addNewSourceBuffer(std::move(*inputFileOrErrSIL));
-    Invocation.setInputKind(InputFileKind::SIL);
+}
 
-    Identifier ID2 = Context->getIdentifier(Invocation.getModuleName());
-    ModuleDecl *SILModule = ModuleDecl::create(ID2, *Context);
+void CompilerInstance::recoverSILFromPreviousCompile(
+    SourceFile::ASTStage_t LimitStage,
+    PersistentParserState &PersistentState,
+    DelayedParsingCallbacks *DelayedParseCB,
+    OptionSet<TypeCheckingFlags> TypeCheckOptions) {
+  SourceFile &MainFile = MainBufferID != NO_SUCH_BUFFER ?
+    MainModule->getMainSourceFile(Invocation.getSourceFileKind()) :
+    *PrimarySourceFiles[0];
+
+  Invocation.getSILOptions().AssumeUnqualifiedOwnershipWhenParsing = true;
+  llvm::raw_fd_ostream OS(fileno(stdout), false);
+  const auto FileSystem = SourceMgr.getFileSystem();
+  std::string Filename = MainFile.getFilename().str();
+  std::string Root = Filename.substr(0,Filename.find_last_of('.'));
+  std::string PrevFilename = Root+".o.swift";
+  auto inputFileOrErr = swift::vfs::getFileOrSTDIN(*FileSystem, PrevFilename);
+  auto inputFileOrErrSIL = swift::vfs::getFileOrSTDIN(*FileSystem, Root+".o.sil");
+  auto CopyMainSource = [&] () {
+    StringRef MainSource = Context->SourceMgr
+      .getEntireTextForBuffer(MainFile.getBufferID().getValue());
+    std::ofstream myfile;
+    myfile.open(PrevFilename.c_str());
+    myfile.write(MainSource.data(), MainSource.size());
+    myfile.close();
+  };
+  if (!inputFileOrErr)
+    CopyMainSource();
+
+  if (Invocation.getSourceFileKind() == SourceFileKind::SIL ||
+      !inputFileOrErrSIL || !inputFileOrErr)
+    return;
+#define DOSIL
+#ifdef DOSIL
+  unsigned SILBufferId = SourceMgr.addNewSourceBuffer(std::move(*inputFileOrErrSIL));
+  Identifier ID2 = Context->getIdentifier(Invocation.getModuleName());
+  ModuleDecl *SILModule = ModuleDecl::create(ID2, *Context);
 
 //    SILModule = MainModule;
 //    printf("%p %p?\n", SILModule, getMainModule());
 
-    SourceFile &SILFile = *new (*Context)
-    SourceFile(*SILModule, SourceFileKind::SIL, SILBufferId,
-               SourceFile::ImplicitModuleImportKind::None,
+  SourceFile &SILFile = *new (*Context)
+  SourceFile(*SILModule, SourceFileKind::SIL, SILBufferId,
+             SourceFile::ImplicitModuleImportKind::None,
+             Invocation.getLangOptions().CollectParsedToken,
+             Invocation.getLangOptions().BuildSyntaxTree);
+
+  SILModule->addFile(SILFile);
+
+  PrevSILModule = SILModule::createEmptyModule(
+      SILModule, Invocation.getSILOptions(),
+      Invocation.getFrontendOptions().InputsAndOutputs.isWholeModule());
+
+  auto Imports1 = SourceFile::ImportedModuleDesc(
+          ModuleDecl::ImportedModule({}, Context->TheBuiltinModule), SourceFile::ImportOptions());
+  SILFile.addImports(Imports1);
+  auto Imports2 = SourceFile::ImportedModuleDesc(
+          ModuleDecl::ImportedModule({}, Context->getStdlibModule(true)), SourceFile::ImportOptions());
+  SILFile.addImports(Imports2);
+
+  PersistentParserState SILPersistentState(*Context);
+  SILParserState PrevSILContext(PrevSILModule.get());
+
+  std::unique_ptr<DelayedParsingCallbacks> SecondaryDelayedCB{
+    computeDelayedParsingCallback(false)};
+
+  for (auto BufferID : InputSourceCodeBufferIDs) {
+    if (!PrimaryBufferIDs.size() || BufferID == PrimaryBufferIDs[0])
+      continue;
+    SourceFile &SF = *new (*Context)
+    SourceFile(*SILModule, SourceFileKind::Library, BufferID,
+               SourceFile::ImplicitModuleImportKind::Stdlib,
                Invocation.getLangOptions().CollectParsedToken,
                Invocation.getLangOptions().BuildSyntaxTree);
+    SILModule->addFile(SF);
 
-    SILModule->addFile(SILFile);
-
-    PrevSILModule = SILModule::createEmptyModule(
-        SILModule, Invocation.getSILOptions(),
-        Invocation.getFrontendOptions().InputsAndOutputs.isWholeModule());
-
-    auto Imports1 = SourceFile::ImportedModuleDesc(
-            ModuleDecl::ImportedModule({}, Context->TheBuiltinModule), SourceFile::ImportOptions());
-    SILFile.addImports(Imports1);
-    auto Imports2 = SourceFile::ImportedModuleDesc(
-            ModuleDecl::ImportedModule({}, Context->getStdlibModule(true)), SourceFile::ImportOptions());
-    SILFile.addImports(Imports2);
-
-    PersistentParserState SILPersistentState(*Context);
-    SILParserState PrevSILContext(PrevSILModule.get());
-    unsigned SILCurTUElem = 0;
-    bool SILDone;
+    unsigned SFCurTUElem = 0;
+    bool Done;
     do {
-      parseIntoSourceFile(SILFile, SILFile.getBufferID().getValue(), &SILDone,
+      // Parser may stop at some erroneous constructions like #else, #endif
+      // or '}' in some cases, continue parsing until we are done
+      parseIntoSourceFile(SF, SF.getBufferID().getValue(), &Done,
                           &PrevSILContext, &SILPersistentState,
-                          DelayedParseCB);
+                          SecondaryDelayedCB.get());
 
-      const auto &options = Invocation.getFrontendOptions();
-      performTypeChecking(SILFile, SILPersistentState.getTopLevelContext(),
-                          TypeCheckOptions, SILCurTUElem,
-                          options.WarnLongFunctionBodies,
-                          options.WarnLongExpressionTypeChecking,
-                          options.SolverExpressionTimeThreshold,
-                          options.SwitchCheckingInvocationThreshold,
-                          &PreviousMap, true);
+      SFCurTUElem = SF.Decls.size();
+    } while (!Done);
 
-      SILCurTUElem = SILFile.Decls.size();
-    } while (!SILDone);
-
-    printf("%d #1\n", SILCurTUElem);
-#endif
+    performNameBinding(SF);
   }
+
+//  const auto &options = Invocation.getFrontendOptions();
+//  performTypeChecking(SILFile, SILPersistentState.getTopLevelContext(),
+//                      TypeCheckOptions, 0,
+//                      options.WarnLongFunctionBodies,
+//                      options.WarnLongExpressionTypeChecking,
+//                      options.SolverExpressionTimeThreshold,
+//                      options.SwitchCheckingInvocationThreshold);
+
+  unsigned SILCurTUElem = 0;
+  bool SILDone;
+  do {
+    parseIntoSourceFile(SILFile, SILFile.getBufferID().getValue(), &SILDone,
+                        &PrevSILContext, &SILPersistentState,
+                        DelayedParseCB);
+
+    const auto &options = Invocation.getFrontendOptions();
+    performTypeChecking(SILFile, SILPersistentState.getTopLevelContext(),
+                        TypeCheckOptions, SILCurTUElem,
+                        options.WarnLongFunctionBodies,
+                        options.WarnLongExpressionTypeChecking,
+                        options.SolverExpressionTimeThreshold,
+                        options.SwitchCheckingInvocationThreshold);
+
+//    printf("%d #1\n", SILCurTUElem);
+    SILCurTUElem = SILFile.Decls.size();
+  } while (!SILDone);
+
+  printf("%d #1\n", SILCurTUElem);
+#endif
+}
+
+void CompilerInstance::parseAndTypeCheckMainFileUpTo( ////
+    SourceFile::ASTStage_t LimitStage,
+    PersistentParserState &PersistentState,
+    DelayedParsingCallbacks *DelayedParseCB,
+    OptionSet<TypeCheckingFlags> TypeCheckOptions) {
+  FrontendStatsTracer tracer(Context->Stats,
+                             "parse-and-typecheck-main-file");
+  bool mainIsPrimary =
+      (isWholeModuleCompilation() || isPrimaryInput(MainBufferID));
+
+  SourceFile &MainFile =
+      MainModule->getMainSourceFile(Invocation.getSourceFileKind());
+
+  auto &Diags = MainFile.getASTContext().Diags;
+  auto DidSuppressWarnings = Diags.getSuppressWarnings();
+  Diags.setSuppressWarnings(DidSuppressWarnings || !mainIsPrimary);
 
   SILParserState SILContext(TheSILModule.get());
   unsigned CurTUElem = 0;

@@ -1336,6 +1336,7 @@ public:
 
 inline SourceFile &
 ModuleDecl::getMainSourceFile(SourceFileKind expectedKind) const {
+  printf("%s ???\n", cast<SourceFile>(Files.front())->getFilename().str().c_str());
   assert(!Files.empty() && "No files added yet");
   assert(cast<SourceFile>(Files.front())->Kind == expectedKind);
   return *cast<SourceFile>(Files.front());

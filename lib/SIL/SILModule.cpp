@@ -459,12 +459,6 @@ SILVTable *SILModule::lookUpVTable(const ClassDecl *C) {
   if (R != VTableMap.end())
     return R->second;
 
-//  SmallString<64> buffer1, buffer2;
-//  StringRef Name = C->getObjCRuntimeName(buffer1);
-//  for (auto E : VTableMap)
-//    if (Name == E.first->getObjCRuntimeName(buffer2))
-//      return E.second;
-
   // If that fails, try to deserialize it. If that fails, return nullptr.
   SILVTable *Vtbl = getSILLoader()->lookupVTable(C);
   if (!Vtbl)
@@ -701,7 +695,7 @@ SILModule::ActionCallback SILModule::getSerializeSILAction() const {
 void SILModule::serialize() {
   assert(SerializeSILAction && "Serialization action should be set");
   assert(!isSerialized() && "The module was serialized already");
-  SerializeSILAction();
+//  SerializeSILAction();
   setSerialized();
 }
 

@@ -1714,6 +1714,8 @@ void SILGenModule::emitSourceFile(SourceFile *sf) {
   FrontendStatsTracer StatsTracer(getASTContext().Stats, "SILgen-file", sf);
   for (Decl *D : sf->Decls) {
     FrontendStatsTracer StatsTracer(getASTContext().Stats, "SILgen-decl", D);
+//    llvm::raw_fd_ostream OS(fileno(stdout), false);
+//    D->print(OS);
     visit(D);
   }
 

@@ -302,6 +302,7 @@ void Lexer::formToken(tok Kind, const char *TokStart) {
     lexTrivia(TrailingTrivia, /* IsForTrailingTrivia */ true);
   }
 
+//  printf("%s\n", TokenText.str().c_str());
   NextToken.setToken(Kind, TokenText, CommentLength);
 }
 

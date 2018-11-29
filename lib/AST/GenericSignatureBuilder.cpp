@@ -7459,7 +7459,13 @@ GenericSignature *GenericSignatureBuilder::computeGenericSignature(
                                           SourceLoc loc,
                                           bool allowConcreteGenericParams,
                                           bool allowBuilderToMove) && {
-  // Finalize the builder, producing any necessary diagnostics.
+//  static int c;
+//  if (loc.getOpaquePointerValue())
+//    printf("%d %.20s-%.50s\n", ++c,
+//           static_cast<const char *>(loc.getOpaquePointerValue())-20,
+//           loc.getOpaquePointerValue());
+
+    // Finalize the builder, producing any necessary diagnostics.
   finalize(loc, getGenericParams(), allowConcreteGenericParams);
 
   // Collect the requirements placed on the generic parameter types.

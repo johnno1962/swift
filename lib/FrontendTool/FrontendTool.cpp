@@ -1415,9 +1415,9 @@ static bool performCompileStepsPostSILGen(
   if (!IRModule)
     return HadError;
 
-  if (validateTBDIfNeeded(Invocation, MSF, astGuaranteedToCorrespondToSIL,
-                          *IRModule))
-    return true;
+//  if (validateTBDIfNeeded(Invocation, MSF, astGuaranteedToCorrespondToSIL,
+//                          *IRModule))
+//    return true;
 
   return generateCode(Invocation, Instance, OutputFilename, IRModule.get(),
                       HashGlobal, Stats) ||

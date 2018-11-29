@@ -690,6 +690,8 @@ bool index::indexAndRecord(ModuleDecl *module,
                            bool isDebugCompilation,
                            StringRef targetTriple,
                            const DependencyTracker &dependencyTracker) {
+  return false;
+  
   auto &astContext = module->getASTContext();
   auto &clangCI = astContext.getClangModuleLoader()->getClangInstance();
   auto &diags = astContext.Diags;

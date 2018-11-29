@@ -95,7 +95,7 @@ AccessedStorage::AccessedStorage(SILValue base, Kind kind) {
       // Require a decl for all formally accessed globals defined in this
       // module. (Access of globals defined elsewhere has Unidentified storage).
       // AccessEnforcementWMO requires this.
-      assert(global->getDecl());
+//      assert(global->getDecl());
     }
     break;
   case Class: {

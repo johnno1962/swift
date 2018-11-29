@@ -449,24 +449,21 @@ static void typeCheckFunctionsAndExternalDecls(SourceFile &SF, TypeChecker &TC,
          ++currentFunctionIdx) {
       auto *AFD = TC.definedFunctions[currentFunctionIdx];
 
-      if (!MapForward) {
+      if (PreviousMap) {
         auto getText = [&](SourceRange Range) {
           const char *start = static_cast<const char *>(Range.Start.getOpaquePointerValue());
           const char *end = static_cast<const char *>(Range.End.getOpaquePointerValue());
-//          printf("%p -> %p %s\n",
-//                 Range.Start.getOpaquePointerValue(), Range.End.getOpaquePointerValue(),
-//                 StringRef(start, 100).str().c_str());
-          return StringRef(start, end-start);
+          printf(">%s<\n", StringRef(start, end-start).str().c_str());
+          return (end-start) ? StringRef(start, end-start) : "---";
         };
 
-        if (PreviousMap->find(getText(AFD->getSourceRange())) != PreviousMap->end())
-          AFD->Unchanged = true;
-        else
+//        if (PreviousMap->find(getText(AFD->getSourceRange())) != PreviousMap->end())
+//          AFD->Unchanged = true;
+//        else
           TC.typeCheckAbstractFunctionBody(AFD); ////
       }
-      else {
+      else
         TC.typeCheckAbstractFunctionBody(AFD); ////
-      }
     }
 
     // Type check external definitions.

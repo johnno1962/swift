@@ -1940,6 +1940,10 @@ bool SILParser::parseSILDeclRef(SILDeclRef &Member, bool FnTypeRequired) {
           (decl->getDeclContext()->isTypeContext() ? 2 : 1);
       }
 
+//      llvm::raw_fd_ostream OS(fileno(stdout), false);
+//      decl->print(OS);
+//      printf("\n\n\n");
+      
       auto lookupTy =
         decl->getInterfaceType()
             ->removeArgumentLabels(numArgumentLabels);
