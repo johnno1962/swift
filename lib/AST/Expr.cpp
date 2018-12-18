@@ -987,7 +987,7 @@ llvm::APFloat FloatLiteralExpr::getValue() const {
 }
 
 StringLiteralExpr::StringLiteralExpr(StringRef Val, SourceRange Range,
-                                     bool Implicit)
+                                     bool Implicit, bool IsCharacterLiteral)
     : LiteralExpr(ExprKind::StringLiteral, Implicit), Val(Val),
       Range(Range) {
   Bits.StringLiteralExpr.Encoding = static_cast<unsigned>(UTF8);
@@ -995,6 +995,7 @@ StringLiteralExpr::StringLiteralExpr(StringRef Val, SourceRange Range,
       unicode::isSingleUnicodeScalar(Val);
   Bits.StringLiteralExpr.IsSingleExtendedGraphemeCluster =
       unicode::isSingleExtendedGraphemeCluster(Val);
+  Bits.StringLiteralExpr.IsCharacterLiteral = IsCharacterLiteral;
 }
 
 static ArrayRef<Identifier> getArgumentLabelsFromArgument(
