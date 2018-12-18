@@ -1687,6 +1687,19 @@ extension ${Self} : _HasCustomAnyHashableRepresentation {
   }
 }
 
+extension ${Self} :
+    _ExpressibleByBuiltinUnicodeScalarLiteral,
+    ExpressibleByUnicodeScalarLiteral {
+  @_transparent
+  public init(_builtinUnicodeScalarLiteral value: Builtin.Int32) {
+    self = ${Self}(truncatingIfNeeded: UInt32(value))
+  }
+  @_transparent
+  public init(unicodeScalarLiteral value: ${Self}) {
+    self = value
+  }
+}
+
 % for src_type in all_integer_types(word_bits):
 %   srcBits = src_type.bits
 %   srcSigned = src_type.is_signed
