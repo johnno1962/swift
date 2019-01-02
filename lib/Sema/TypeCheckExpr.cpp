@@ -655,13 +655,18 @@ static Type lookupDefaultLiteralType(TypeChecker &TC, DeclContext *dc,
   return cast<TypeAliasDecl>(TD)->getDeclaredInterfaceType();
 }
 
-Type TypeChecker::getDefaultType(ProtocolDecl *protocol, DeclContext *dc) {
+Type TypeChecker::getDefaultType(ProtocolDecl *protocol, DeclContext *dc,
+                                 bool isCharacterLiteral) {
   Type *type = nullptr;
   const char *name = nullptr;
   bool performLocalLookup = true;
 
+  if (isCharacterLiteral) {
+    type = &CharacterLiteralType;
+    name = "CharacterLiteralType";
+  }
   // ExpressibleByUnicodeScalarLiteral -> UnicodeScalarType
-  if (protocol ==
+  else if (protocol ==
            getProtocol(
                SourceLoc(),
                KnownProtocolKind::ExpressibleByUnicodeScalarLiteral)) {
