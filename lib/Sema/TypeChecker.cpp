@@ -114,6 +114,8 @@ ProtocolDecl *TypeChecker::getLiteralProtocol(Expr *expr) {
                        KnownProtocolKind::ExpressibleByBooleanLiteral);
 
   if (const auto *SLE = dyn_cast<StringLiteralExpr>(expr)) {
+// Switch off double quoted strings expressing Character and Unicode.Scalar here
+//    if (SLE->isCharacterLiteral()) {
     if (SLE->isSingleUnicodeScalar())
       return getProtocol(
           expr->getLoc(),
@@ -123,7 +125,7 @@ ProtocolDecl *TypeChecker::getLiteralProtocol(Expr *expr) {
       return getProtocol(
           expr->getLoc(),
           KnownProtocolKind::ExpressibleByExtendedGraphemeClusterLiteral);
-
+//    }
     return getProtocol(expr->getLoc(),
                        KnownProtocolKind::ExpressibleByStringLiteral);
   }
@@ -228,7 +230,6 @@ ModuleDecl *TypeChecker::getStdlibModule(const DeclContext *dc) {
   }
 
   assert(StdlibModule && "no main module found");
-  Context.recordKnownProtocols(StdlibModule);
   return StdlibModule;
 }
 

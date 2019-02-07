@@ -662,31 +662,11 @@ public:
   }
 
 private:
-  Type IntLiteralType;
   Type MaxIntegerType;
-  Type FloatLiteralType;
-  Type BooleanLiteralType;
-  Type UnicodeScalarType;
-  Type ExtendedGraphemeClusterType;
-  Type StringLiteralType;
-  Type ArrayLiteralType;
-  Type DictionaryLiteralType;
-  Type ColorLiteralType;
-  Type ImageLiteralType;
-  Type FileReferenceLiteralType;
-  Type StringType;
-  Type SubstringType;
-  Type IntType;
-  Type Int8Type;
-  Type UInt8Type;
   Type NSObjectType;
   Type NSNumberType;
   Type NSValueType;
   Type ObjCSelectorType;
-  Type ExceptionType;
-
-  /// The \c Swift.UnsafeMutablePointer<T> declaration.
-  Optional<NominalTypeDecl *> ArrayDecl;
 
   /// The set of expressions currently being analyzed for failures.
   llvm::DenseMap<Expr*, Expr*> DiagnosedExprs;
@@ -1603,7 +1583,8 @@ public:
   ///
   /// \returns the default type, or null if there is no default type for
   /// this protocol.
-  Type getDefaultType(ProtocolDecl *protocol, DeclContext *dc);
+  Type getDefaultType(ProtocolDecl *protocol, DeclContext *dc,
+                      bool isCharacterLiteral = false);
 
   /// Convert the given expression to the given type.
   ///
@@ -2127,6 +2108,20 @@ public:
 
   /// Attempt to omit needless words from the name of the given declaration.
   Optional<Identifier> omitNeedlessWords(VarDecl *var);
+
+  /// Calculate edit distance between declaration names.
+  static unsigned getCallEditDistance(DeclName writtenName,
+                                      DeclName correctedName,
+                                      unsigned maxEditDistance);
+
+  enum : unsigned {
+    /// Never consider a candidate that's this distance away or worse.
+    UnreasonableCallEditDistance = 8,
+
+    /// Don't consider candidates that score worse than the given distance
+    /// from the best candidate.
+    MaxCallEditDistanceFromBestCandidate = 1
+  };
 
   /// Check for a typo correction.
   void performTypoCorrection(DeclContext *DC,

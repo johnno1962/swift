@@ -161,10 +161,11 @@ protected:
     IsNegative : 1
   );
 
-  SWIFT_INLINE_BITFIELD(StringLiteralExpr, LiteralExpr, 3+1+1,
+  SWIFT_INLINE_BITFIELD(StringLiteralExpr, LiteralExpr, 3+1+1+1,
     Encoding : 3,
     IsSingleUnicodeScalar : 1,
-    IsSingleExtendedGraphemeCluster : 1
+    IsSingleExtendedGraphemeCluster : 1,
+    IsCharacterLiteral : 1
   );
 
   SWIFT_INLINE_BITFIELD_FULL(InterpolatedStringLiteralExpr, LiteralExpr, 32+20,
@@ -524,10 +525,10 @@ public:
   /// the parent map.
   llvm::DenseMap<Expr *, Expr *> getParentMap();
 
-  /// Produce a mapping from each subexpression to its depth in the root
-  /// expression. The root expression has depth 0, its children have depth
-  /// 1, etc.
-  llvm::DenseMap<Expr *, unsigned> getDepthMap();
+  /// Produce a mapping from each subexpression to its depth and parent,
+  /// in the root expression. The root expression has depth 0, its children have
+  /// depth 1, etc.
+  llvm::DenseMap<Expr *, std::pair<unsigned, Expr *>> getDepthMap();
 
   /// Produce a mapping from each expression to its index according to a
   /// preorder traversal of the expressions. The parent has index 0, its first
@@ -711,6 +712,7 @@ public:
 ///
 class NilLiteralExpr : public LiteralExpr {
   SourceLoc Loc;
+  ConcreteDeclRef Initializer;
 public:
   NilLiteralExpr(SourceLoc Loc, bool Implicit = false)
   : LiteralExpr(ExprKind::NilLiteral, Implicit), Loc(Loc) {
@@ -718,6 +720,15 @@ public:
   
   SourceRange getSourceRange() const {
     return Loc;
+  }
+
+  /// Retrieve the initializer that will be used to construct the 'nil'
+  /// literal from the result of the initializer.
+  ConcreteDeclRef getInitializer() const { return Initializer; }
+
+  /// Set the initializer that will be used to construct the 'nil' literal.
+  void setInitializer(ConcreteDeclRef initializer) {
+    Initializer = initializer;
   }
   
   static bool classof(const Expr *E) {
@@ -825,6 +836,8 @@ public:
 ///
 class BooleanLiteralExpr : public LiteralExpr {
   SourceLoc Loc;
+  ConcreteDeclRef BuiltinInitializer;
+  ConcreteDeclRef Initializer;
 
 public:
   BooleanLiteralExpr(bool Value, SourceLoc Loc, bool Implicit = false)
@@ -838,7 +851,33 @@ public:
   SourceRange getSourceRange() const {
     return Loc;
   }
-  
+
+  /// Retrieve the builtin initializer that will be used to construct the
+  /// boolean literal.
+  ///
+  /// Any type-checked boolean literal will have a builtin initializer, which is
+  /// called first to form a concrete Swift type.
+  ConcreteDeclRef getBuiltinInitializer() const { return BuiltinInitializer; }
+
+  /// Set the builtin initializer that will be used to construct the boolean
+  /// literal.
+  void setBuiltinInitializer(ConcreteDeclRef builtinInitializer) {
+    BuiltinInitializer = builtinInitializer;
+  }
+
+  /// Retrieve the initializer that will be used to construct the boolean
+  /// literal from the result of the initializer.
+  ///
+  /// Only boolean literals that have no builtin literal conformance will have
+  /// this initializer, which will be called on the result of the builtin
+  /// initializer.
+  ConcreteDeclRef getInitializer() const { return Initializer; }
+
+  /// Set the initializer that will be used to construct the boolean literal.
+  void setInitializer(ConcreteDeclRef initializer) {
+    Initializer = initializer;
+  }
+
   static bool classof(const Expr *E) {
     return E->getKind() == ExprKind::BooleanLiteral;
   }
@@ -864,7 +903,14 @@ public:
     OneUnicodeScalar
   };
 
-  StringLiteralExpr(StringRef Val, SourceRange Range, bool Implicit = false);
+  static bool isCharacterLiteralExpr(Expr *expr) {
+    if (auto stringLiteral = dyn_cast_or_null<StringLiteralExpr>(expr))
+      return stringLiteral->isCharacterLiteral();
+    return false;
+  }
+
+  StringLiteralExpr(StringRef Val, SourceRange Range,
+                    bool Implicit = false, bool IsCharacterLiteral = false);
 
   StringRef getValue() const { return Val; }
   SourceRange getSourceRange() const { return Range; }
@@ -885,6 +931,10 @@ public:
 
   bool isSingleExtendedGraphemeCluster() const {
     return Bits.StringLiteralExpr.IsSingleExtendedGraphemeCluster;
+  }
+
+  bool isCharacterLiteral() const {
+    return Bits.StringLiteralExpr.IsCharacterLiteral;
   }
 
   /// Retrieve the builtin initializer that will be used to construct the string

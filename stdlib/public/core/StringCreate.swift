@@ -15,13 +15,33 @@
 internal func _allASCII(_ input: UnsafeBufferPointer<UInt8>) -> Bool {
   // NOTE: Avoiding for-in syntax to avoid bounds checks
   //
-  // TODO(String performance): Vectorize and/or incorporate into validity
-  // checking, perhaps both.
+  // TODO(String performance): SIMD-ize
   //
   let ptr = input.baseAddress._unsafelyUnwrappedUnchecked
   var i = 0
-  while i < input.count {
-    guard ptr[i] <= 0x7F else { return false }
+
+  let count = input.count
+  let stride = MemoryLayout<UInt>.stride
+  let address = Int(bitPattern: ptr)
+
+  let wordASCIIMask = UInt(truncatingIfNeeded: 0x8080_8080_8080_8080 as UInt64)
+  let byteASCIIMask = UInt8(truncatingIfNeeded: wordASCIIMask)
+
+  while (address &+ i) % stride != 0 && i < count {
+    guard ptr[i] & byteASCIIMask == 0 else { return false }
+    i &+= 1
+  }
+
+  while (i &+ stride) <= count {
+    let word: UInt = UnsafePointer(
+      bitPattern: address &+ i
+    )._unsafelyUnwrappedUnchecked.pointee
+    guard word & wordASCIIMask == 0 else { return false }
+    i &+= stride
+  }
+
+  while i < count {
+    guard ptr[i] & byteASCIIMask == 0 else { return false }
     i &+= 1
   }
   return true
@@ -38,16 +58,14 @@ extension String {
       return String(_StringGuts(smol))
     }
 
-    let storage = _StringStorage.create(initializingFrom: input, isASCII: true)
+    let storage = __StringStorage.create(initializingFrom: input, isASCII: true)
     return storage.asString
   }
 
-  @usableFromInline
-  internal static func _tryFromUTF8(
-    _ input: UnsafeBufferPointer<UInt8>
-  ) -> String? {
+  public // SPI(Foundation)
+  static func _tryFromUTF8(_ input: UnsafeBufferPointer<UInt8>) -> String? {
     guard case .success(let extraInfo) = validateUTF8(input) else {
-        return nil
+      return nil
     }
 
     return String._uncheckedFromUTF8(input, isASCII: extraInfo.isASCII)
@@ -83,7 +101,7 @@ extension String {
       return String(_StringGuts(smol))
     }
 
-    let storage = _StringStorage.create(
+    let storage = __StringStorage.create(
       initializingFrom: input, isASCII: isASCII)
     return storage.asString
   }
@@ -98,7 +116,7 @@ extension String {
     }
 
     let isASCII = asciiPreScanResult
-    let storage = _StringStorage.create(
+    let storage = __StringStorage.create(
       initializingFrom: input, isASCII: isASCII)
     return storage.asString
   }

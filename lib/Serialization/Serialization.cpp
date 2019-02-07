@@ -26,6 +26,7 @@
 #include "swift/AST/PrettyStackTrace.h"
 #include "swift/AST/ProtocolConformance.h"
 #include "swift/AST/RawComment.h"
+#include "swift/AST/TypeCheckRequests.h"
 #include "swift/Basic/Dwarf.h"
 #include "swift/Basic/FileSystem.h"
 #include "swift/Basic/STLExtras.h"
@@ -475,6 +476,8 @@ static const Decl *getDeclForContext(const DeclContext *DC) {
     return cast<AbstractFunctionDecl>(DC);
   case DeclContextKind::SubscriptDecl:
     return cast<SubscriptDecl>(DC);
+  case DeclContextKind::EnumElementDecl:
+    return cast<EnumElementDecl>(DC);
   }
 
   llvm_unreachable("Unhandled DeclContextKind in switch.");
@@ -1055,7 +1058,9 @@ void Serializer::writeInputBlock(const SerializationOptions &options) {
   }
 
   for (auto const &dep : options.Dependencies) {
-    FileDependency.emit(ScratchRecord, dep.Size, dep.Hash, dep.Path);
+    FileDependency.emit(ScratchRecord, dep.Size,
+                        dep.ModificationTime,
+                        dep.Path);
   }
 
   SmallVector<ModuleDecl::ImportedModule, 8> allImports;
@@ -1870,6 +1875,7 @@ void Serializer::writeCrossReference(const DeclContext *DC, uint32_t pathLen) {
   case DeclContextKind::Initializer:
   case DeclContextKind::TopLevelCodeDecl:
   case DeclContextKind::SerializedLocal:
+  case DeclContextKind::EnumElementDecl:
     llvm_unreachable("cannot cross-reference this context");
 
   case DeclContextKind::FileUnit:
@@ -2405,6 +2411,7 @@ void Serializer::writeDeclContext(const DeclContext *DC) {
   case DeclContextKind::SubscriptDecl:
   case DeclContextKind::GenericTypeDecl:
   case DeclContextKind::ExtensionDecl:
+  case DeclContextKind::EnumElementDecl:
     declOrDeclContextID = addDeclRef(getDeclForContext(DC));
     isDecl = true;
     break;
@@ -4634,7 +4641,10 @@ void Serializer::writeAST(ModuleOrSourceFile DC,
     for (auto TD : localTypeDecls) {
       hasLocalTypes = true;
       Mangle::ASTMangler Mangler;
-      std::string MangledName = Mangler.mangleDeclAsUSR(TD, /*USRPrefix*/"");
+      std::string MangledName =
+          evaluateOrDefault(M->getASTContext().evaluator,
+                            MangleLocalTypeDeclRequest { TD },
+                            std::string());
       assert(!MangledName.empty() && "Mangled type came back empty!");
       localTypeGenerator.insert(MangledName, addDeclRef(TD));
 

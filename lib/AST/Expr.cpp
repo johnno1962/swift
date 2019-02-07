@@ -698,17 +698,18 @@ llvm::DenseMap<Expr *, Expr *> Expr::getParentMap() {
   return parentMap;
 }
 
-llvm::DenseMap<Expr *, unsigned> Expr::getDepthMap() {
+llvm::DenseMap<Expr *, std::pair<unsigned, Expr *>> Expr::getDepthMap() {
   class RecordingTraversal : public ASTWalker {
   public:
-    llvm::DenseMap<Expr *, unsigned> &DepthMap;
+    llvm::DenseMap<Expr *, std::pair<unsigned, Expr *>> &DepthMap;
     unsigned Depth = 0;
 
-    explicit RecordingTraversal(llvm::DenseMap<Expr *, unsigned> &depthMap)
-      : DepthMap(depthMap) { }
+    explicit RecordingTraversal(
+        llvm::DenseMap<Expr *, std::pair<unsigned, Expr *>> &depthMap)
+        : DepthMap(depthMap) {}
 
     std::pair<bool, Expr *> walkToExprPre(Expr *E) override {
-      DepthMap[E] = Depth;
+      DepthMap[E] = {Depth, Parent.getAsExpr()};
       Depth++;
       return { true, E };
     }
@@ -719,7 +720,7 @@ llvm::DenseMap<Expr *, unsigned> Expr::getDepthMap() {
     }
   };
 
-  llvm::DenseMap<Expr *, unsigned> depthMap;
+  llvm::DenseMap<Expr *, std::pair<unsigned, Expr *>> depthMap;
   RecordingTraversal traversal(depthMap);
   walk(traversal);
   return depthMap;
@@ -964,7 +965,7 @@ llvm::APFloat FloatLiteralExpr::getValue() const {
 }
 
 StringLiteralExpr::StringLiteralExpr(StringRef Val, SourceRange Range,
-                                     bool Implicit)
+                                     bool Implicit, bool IsCharacterLiteral)
     : LiteralExpr(ExprKind::StringLiteral, Implicit), Val(Val),
       Range(Range) {
   Bits.StringLiteralExpr.Encoding = static_cast<unsigned>(UTF8);
@@ -972,6 +973,7 @@ StringLiteralExpr::StringLiteralExpr(StringRef Val, SourceRange Range,
       unicode::isSingleUnicodeScalar(Val);
   Bits.StringLiteralExpr.IsSingleExtendedGraphemeCluster =
       unicode::isSingleExtendedGraphemeCluster(Val);
+  Bits.StringLiteralExpr.IsCharacterLiteral = IsCharacterLiteral;
 }
 
 static ArrayRef<Identifier> getArgumentLabelsFromArgument(

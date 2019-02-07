@@ -374,7 +374,6 @@ bool DeclAttribute::printImpl(ASTPrinter &Printer, const PrintOptions &Options,
   case DAK_RawDocComment:
   case DAK_ObjCBridged:
   case DAK_SynthesizedProtocol:
-  case DAK_ShowInInterface:
   case DAK_Rethrows:
   case DAK_Infix:
     return false;
@@ -461,8 +460,10 @@ bool DeclAttribute::printImpl(ASTPrinter &Printer, const PrintOptions &Options,
     // If there's no message, but this is specifically an imported
     // "unavailable in Swift" attribute, synthesize a message to look good in
     // the generated interface.
-    if (!Attr->Message.empty())
-      Printer << ", message: \"" << Attr->Message << "\"";
+    if (!Attr->Message.empty()) {
+      Printer << ", message: ";
+      Printer.printEscapedStringLiteral(Attr->Message);
+    }
     else if (Attr->getPlatformAgnosticAvailability()
                == PlatformAgnosticAvailabilityKind::UnavailableInSwift)
       Printer << ", message: \"Not available in Swift\"";
@@ -552,10 +553,10 @@ bool DeclAttribute::printImpl(ASTPrinter &Printer, const PrintOptions &Options,
   }
 
   case DAK_ObjCRuntimeName: {
-    Printer.printAttrName("@objc");
+    Printer.printAttrName("@_objcRuntimeName");
     Printer << "(";
     auto *attr = cast<ObjCRuntimeNameAttr>(this);
-    Printer << "\"" << attr->Name << "\"";
+    Printer << attr->Name;
     Printer << ")";
     break;
   }

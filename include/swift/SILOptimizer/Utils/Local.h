@@ -212,6 +212,12 @@ void releasePartialApplyCapturedArg(
     SILBuilder &Builder, SILLocation Loc, SILValue Arg, SILParameterInfo PInfo,
     InstModCallbacks Callbacks = InstModCallbacks());
 
+/// Insert destroys of captured arguments of partial_apply [stack].
+void insertDestroyOfCapturedArguments(
+    PartialApplyInst *PAI, SILBuilder &B,
+    llvm::function_ref<bool(SILValue)> shouldInsertDestroy =
+        [](SILValue arg) -> bool { return true; });
+
 /// This computes the lifetime of a single SILValue.
 ///
 /// This does not compute a set of jointly postdominating use points. Instead it
@@ -281,6 +287,9 @@ public:
   bool isAliveAtBeginOfBlock(SILBasicBlock *BB) {
     return LiveBlocks.count(BB) && BB != DefValue->getParent();
   }
+
+  /// Checks if there is a dealloc_ref inside the value's live range.
+  bool containsDeallocRef(const Frontier &Frontier);
 
   /// For debug dumping.
   void dump() const;

@@ -61,6 +61,9 @@ void SymbolicValue::print(llvm::raw_ostream &os, unsigned indent) const {
   case RK_IntegerInline:
     os << "int: " << getIntegerValue() << "\n";
     return;
+  case RK_String:
+    os << "string: \"" << getStringValue() << "\"\n";
+    return;
   case RK_Aggregate: {
     ArrayRef<SymbolicValue> elements = getAggregateValue();
     switch (elements.size()) {
@@ -78,6 +81,20 @@ void SymbolicValue::print(llvm::raw_ostream &os, unsigned indent) const {
       os.indent(indent) << "]\n";
       return;
     }
+  }
+  case RK_Enum: {
+    auto *decl = getEnumValue();
+    os << "enum: ";
+    decl->print(os);
+    return;
+  }
+  case RK_EnumWithPayload: {
+    auto *decl = getEnumValue();
+    os << "enum: ";
+    decl->print(os);
+    os << ", payload: ";
+    getEnumPayloadValue().print(os, indent);
+    return;
   }
   case RK_DirectAddress:
   case RK_DerivedAddress: {
@@ -108,9 +125,15 @@ SymbolicValue::Kind SymbolicValue::getKind() const {
     return Function;
   case RK_Aggregate:
     return Aggregate;
+  case RK_Enum:
+    return Enum;
+  case RK_EnumWithPayload:
+    return EnumWithPayload;
   case RK_Integer:
   case RK_IntegerInline:
     return Integer;
+  case RK_String:
+    return String;
   case RK_DirectAddress:
   case RK_DerivedAddress:
     return Address;
@@ -128,9 +151,14 @@ SymbolicValue::cloneInto(ASTContext &astContext) const {
   case RK_Metatype:
   case RK_Function:
     assert(0 && "cloning this representation kind is not supported");
+  case RK_Enum:
+    // These have trivial inline storage, just return a copy.
+    return *this;
   case RK_IntegerInline:
   case RK_Integer:
     return SymbolicValue::getInteger(getIntegerValue(), astContext);
+  case RK_String:
+    return SymbolicValue::getString(getStringValue(), astContext);
   case RK_Aggregate: {
     auto elts = getAggregateValue();
     SmallVector<SymbolicValue, 4> results;
@@ -139,6 +167,8 @@ SymbolicValue::cloneInto(ASTContext &astContext) const {
       results.push_back(elt.cloneInto(astContext));
     return getAggregate(results, astContext);
   }
+  case RK_EnumWithPayload:
+    return getEnumWithPayload(getEnumValue(), getEnumPayloadValue(), astContext);
   case RK_DirectAddress:
   case RK_DerivedAddress: {
     SmallVector<unsigned, 4> accessPath;
@@ -213,6 +243,34 @@ unsigned SymbolicValue::getIntegerValueBitWidth() const {
   assert (representationKind == RK_IntegerInline ||
           representationKind == RK_Integer);
   return auxInfo.integerBitwidth;
+}
+
+//===----------------------------------------------------------------------===//
+// Strings
+//===----------------------------------------------------------------------===//
+
+// Returns a SymbolicValue representing a UTF-8 encoded string.
+SymbolicValue SymbolicValue::getString(StringRef string,
+                                       ASTContext &astContext) {
+  // TODO: Could have an inline representation for strings if thre was demand,
+  // just store a char[8] as the storage.
+
+  auto *resultPtr = astContext.Allocate<char>(string.size()).data();
+  std::uninitialized_copy(string.begin(), string.end(), resultPtr);
+
+  SymbolicValue result;
+  result.representationKind = RK_String;
+  result.value.string = resultPtr;
+  result.auxInfo.stringNumBytes = string.size();
+  return result;
+}
+
+// Returns the UTF-8 encoded string underlying a SymbolicValue.
+StringRef SymbolicValue::getStringValue() const {
+  assert(getKind() == String);
+
+  assert(representationKind == RK_String);
+  return StringRef(value.string, auxInfo.stringNumBytes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -317,6 +375,56 @@ SILNode *SymbolicValue::getUnknownNode() const {
 UnknownReason SymbolicValue::getUnknownReason() const {
   assert(getKind() == Unknown);
   return value.unknown->reason;
+}
+
+//===----------------------------------------------------------------------===//
+// Enums
+//===----------------------------------------------------------------------===//
+
+namespace swift {
+
+/// This is the representation of a constant enum value with payload.
+struct EnumWithPayloadSymbolicValue final {
+  /// The enum case.
+  EnumElementDecl *enumDecl;
+  SymbolicValue payload;
+
+  EnumWithPayloadSymbolicValue(EnumElementDecl *decl, SymbolicValue payload)
+      : enumDecl(decl), payload(payload) {}
+
+private:
+  EnumWithPayloadSymbolicValue() = delete;
+  EnumWithPayloadSymbolicValue(const EnumWithPayloadSymbolicValue &) = delete;
+};
+} // end namespace swift
+
+/// This returns a constant Symbolic value for the enum case in `decl` with a
+/// payload.
+SymbolicValue
+SymbolicValue::getEnumWithPayload(EnumElementDecl *decl, SymbolicValue payload,
+                                  ASTContext &astContext) {
+  assert(decl && payload.isConstant());
+  auto rawMem = astContext.Allocate(sizeof(EnumWithPayloadSymbolicValue),
+                                    alignof(EnumWithPayloadSymbolicValue));
+  auto enumVal = ::new (rawMem) EnumWithPayloadSymbolicValue(decl, payload);
+
+  SymbolicValue result;
+  result.representationKind = RK_EnumWithPayload;
+  result.value.enumValWithPayload = enumVal;
+  return result;
+}
+
+EnumElementDecl *SymbolicValue::getEnumValue() const {
+  if (representationKind == RK_Enum)
+    return value.enumVal;
+
+  assert(representationKind == RK_EnumWithPayload);
+  return value.enumValWithPayload->enumDecl;
+}
+
+SymbolicValue SymbolicValue::getEnumPayloadValue() const {
+  assert(representationKind == RK_EnumWithPayload);
+  return value.enumValWithPayload->payload;
 }
 
 //===----------------------------------------------------------------------===//

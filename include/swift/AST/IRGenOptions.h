@@ -165,6 +165,9 @@ public:
   /// Emit names of struct stored properties and enum cases.
   unsigned EnableReflectionNames : 1;
 
+  /// Emit mangled names of anonymous context descriptors.
+  unsigned EnableAnonymousContextMangledNames : 1;
+
   /// Enables resilient class layout.
   unsigned EnableClassResilience : 1;
 
@@ -193,6 +196,9 @@ public:
 
   /// Enable chaining of dynamic replacements.
   unsigned EnableDynamicReplacementChaining : 1;
+
+  /// Disable round-trip verification of mangled debug types.
+  unsigned DisableRoundTripDebugTypes : 1;
 
   /// Path to the profdata file to be used for PGO, or the empty string.
   std::string UseProfile = "";
@@ -224,10 +230,12 @@ public:
         EmitStackPromotionChecks(false), PrintInlineTree(false),
         EmbedMode(IRGenEmbedMode::None), HasValueNamesSetting(false),
         ValueNames(false), EnableReflectionMetadata(true),
-        EnableReflectionNames(true), EnableClassResilience(false),
+        EnableReflectionNames(true), EnableAnonymousContextMangledNames(false),
+        EnableClassResilience(false),
         EnableResilienceBypass(false), LazyInitializeClassMetadata(false),
         UseIncrementalLLVMCodeGen(true), UseSwiftCall(false),
         GenerateProfile(false), EnableDynamicReplacementChaining(false),
+        DisableRoundTripDebugTypes(false),
         CmdArgs(), SanitizeCoverage(llvm::SanitizerCoverageOptions()),
         TypeInfoFilter(TypeInfoDumpFilter::All) {}
 

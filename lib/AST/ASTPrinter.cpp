@@ -178,7 +178,7 @@ PrintOptions PrintOptions::printParseableInterfaceFile() {
   result.PrintAccess = true;
 
   result.ExcludeAttrList = {DAK_ImplicitlyUnwrappedOptional, DAK_AccessControl,
-                            DAK_SetterAccess};
+                            DAK_SetterAccess, DAK_Lazy};
 
   return result;
 }
@@ -268,6 +268,22 @@ void ASTPrinter::printIndent() {
 void ASTPrinter::printTextImpl(StringRef Text) {
   forceNewlines();
   printText(Text);
+}
+
+void ASTPrinter::printEscapedStringLiteral(StringRef str) {
+  SmallString<128> encodeBuf;
+  StringRef escaped =
+    Lexer::getEncodedStringSegment(str, encodeBuf,
+                                   /*isFirstSegment*/true,
+                                   /*isLastSegment*/true,
+                                   /*indentToStrip*/~0U /* sentinel */);
+
+  // FIXME: This is wasteful, but ASTPrinter is an abstract class that doesn't
+  //        have a directly-accessible ostream.
+  SmallString<128> escapeBuf;
+  llvm::raw_svector_ostream os(escapeBuf);
+  os << QuotedString(escaped);
+  printTextImpl(escapeBuf.str());
 }
 
 void ASTPrinter::printTypeRef(Type T, const TypeDecl *RefTo, Identifier Name) {

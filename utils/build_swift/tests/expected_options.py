@@ -82,6 +82,7 @@ EXPECTED_DEFAULTS = {
     'build_swift_stdlib_unittest_extra': False,
     'build_swiftpm': False,
     'build_swiftsyntax': False,
+    'build_libparser_only': False,
     'build_skstresstester': False,
     'build_swiftevolve': False,
     'build_tvos': True,
@@ -138,7 +139,7 @@ EXPECTED_DEFAULTS = {
     'install_symroot': None,
     'ios': False,
     'ios_all': False,
-    'legacy_impl': True,
+    'legacy_impl': False,
     'libdispatch_build_variant': 'Debug',
     'libicu_build_variant': 'Debug',
     'lit_args': '-sv',
@@ -400,6 +401,7 @@ EXPECTED_OPTIONS = [
     SetTrueOption('--skip-build'),
     SetTrueOption('--swiftpm', dest='build_swiftpm'),
     SetTrueOption('--swiftsyntax', dest='build_swiftsyntax'),
+    SetTrueOption('--build-libparser-only', dest='build_libparser_only'),
     SetTrueOption('--skstresstester', dest='build_skstresstester'),
     SetTrueOption('--swiftevolve', dest='build_swiftevolve'),
     SetTrueOption('-B', dest='benchmark'),
@@ -411,7 +413,7 @@ EXPECTED_OPTIONS = [
     SetTrueOption('-n', dest='dry_run'),
     SetTrueOption('-p', dest='build_swiftpm'),
 
-    SetFalseOption('--no-legacy-impl', dest='legacy_impl'),
+    SetTrueOption('--legacy-impl', dest='legacy_impl'),
 
     EnableOption('--android'),
     EnableOption('--build-external-benchmarks'),

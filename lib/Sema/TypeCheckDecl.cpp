@@ -2775,7 +2775,7 @@ public:
         }
       }
 
-      if (TC.getLangOpts().EnableAccessControl) {
+      if (!TC.Context.isAccessControlDisabled()) {
         // Require the superclass to be open if this is outside its
         // defining module.  But don't emit another diagnostic if we
         // already complained about the class being inherently
@@ -4768,11 +4768,11 @@ static Optional<std::string> buildDefaultInitializerString(TypeChecker &tc,
     }
     CHECK_LITERAL_PROTOCOL(ExpressibleByArrayLiteral, "[]")
     CHECK_LITERAL_PROTOCOL(ExpressibleByDictionaryLiteral, "[:]")
-    CHECK_LITERAL_PROTOCOL(ExpressibleByUnicodeScalarLiteral, "\"\"")
     CHECK_LITERAL_PROTOCOL(ExpressibleByExtendedGraphemeClusterLiteral, "\"\"")
     CHECK_LITERAL_PROTOCOL(ExpressibleByFloatLiteral, "0.0")
     CHECK_LITERAL_PROTOCOL(ExpressibleByIntegerLiteral, "0")
     CHECK_LITERAL_PROTOCOL(ExpressibleByStringLiteral, "\"\"")
+    CHECK_LITERAL_PROTOCOL(ExpressibleByUnicodeScalarLiteral, "\"\"")
 #undef CHECK_LITERAL_PROTOCOL
 
     // For optional types, use 'nil'.

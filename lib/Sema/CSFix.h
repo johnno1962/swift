@@ -104,6 +104,14 @@ enum class FixKind : uint8_t {
   /// fix this issue by pretending that member exists and matches
   /// given arguments/result types exactly.
   DefineMemberBasedOnUse,
+
+  /// Allow expressions where 'mutating' method is only partially applied,
+  /// which means either not applied at all e.g. `Foo.bar` or only `Self`
+  /// is applied e.g. `foo.bar` or `Foo.bar(&foo)`.
+  ///
+  /// Allow expressions where initializer call (either `self.init` or
+  /// `super.init`) is only partially applied.
+  AllowInvalidPartialApplication,
 };
 
 class ConstraintFix {
@@ -111,13 +119,20 @@ class ConstraintFix {
   FixKind Kind;
   ConstraintLocator *Locator;
 
+  /// Determines whether this fix is simplify a warning which doesn't
+  /// require immediate source changes.
+  bool IsWarning;
+
 public:
-  ConstraintFix(ConstraintSystem &cs, FixKind kind, ConstraintLocator *locator)
-      : CS(cs), Kind(kind), Locator(locator) {}
+  ConstraintFix(ConstraintSystem &cs, FixKind kind, ConstraintLocator *locator,
+                bool warning = false)
+      : CS(cs), Kind(kind), Locator(locator), IsWarning(warning) {}
 
   virtual ~ConstraintFix();
 
   FixKind getKind() const { return Kind; }
+
+  bool isWarning() const { return IsWarning; }
 
   virtual std::string getName() const = 0;
 
@@ -159,16 +174,24 @@ public:
 
 /// Introduce a '!' to force an optional unwrap.
 class ForceOptional final : public ConstraintFix {
-  ForceOptional(ConstraintSystem &cs, ConstraintLocator *locator)
-      : ConstraintFix(cs, FixKind::ForceOptional, locator) {}
+  Type BaseType;
+  Type UnwrappedType;
+
+  ForceOptional(ConstraintSystem &cs, Type baseType, Type unwrappedType,
+                ConstraintLocator *locator)
+      : ConstraintFix(cs, FixKind::ForceOptional, locator), BaseType(baseType),
+        UnwrappedType(unwrappedType) {
+    assert(baseType && "Base type must not be null");
+    assert(unwrappedType && "Unwrapped type must not be null");
+  }
 
 public:
   std::string getName() const override { return "force optional"; }
 
   bool diagnose(Expr *root, bool asNote = false) const override;
 
-  static ForceOptional *create(ConstraintSystem &cs,
-                               ConstraintLocator *locator);
+  static ForceOptional *create(ConstraintSystem &cs, Type baseType,
+                               Type unwrappedType, ConstraintLocator *locator);
 };
 
 /// Unwrap an optional base when we have a member access.
@@ -492,6 +515,24 @@ public:
   static DefineMemberBasedOnUse *create(ConstraintSystem &cs, Type baseType,
                                         DeclName member,
                                         ConstraintLocator *locator);
+};
+
+class AllowInvalidPartialApplication final : public ConstraintFix {
+public:
+  AllowInvalidPartialApplication(bool isWarning, ConstraintSystem &cs,
+                                 ConstraintLocator *locator)
+      : ConstraintFix(cs, FixKind::AllowInvalidPartialApplication, locator,
+                      isWarning) {}
+
+  std::string getName() const override {
+    return "allow partially applied 'mutating' method";
+  }
+
+  bool diagnose(Expr *root, bool asNote = false) const override;
+
+  static AllowInvalidPartialApplication *create(bool isWarning,
+                                                ConstraintSystem &cs,
+                                                ConstraintLocator *locator);
 };
 
 } // end namespace constraints

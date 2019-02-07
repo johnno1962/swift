@@ -216,8 +216,9 @@ Type TypeResolution::resolveDependentMemberType(
     return DependentMemberType::get(baseTy, assocType);
   }
 
-  // Otherwise, the nested type comes from a concrete type. Substitute the
-  // base type into it.
+  // Otherwise, the nested type comes from a concrete type,
+  // or it's a typealias declared in protocol or protocol extension.
+  // Substitute the base type into it.
   auto concrete = ref->getBoundDecl();
   auto lazyResolver = ctx.getLazyResolver();
   if (lazyResolver)
@@ -225,14 +226,26 @@ Type TypeResolution::resolveDependentMemberType(
   if (!concrete->hasInterfaceType())
     return ErrorType::get(ctx);
 
-  if (concrete->getDeclContext()->getSelfClassDecl()) {
-    // We found a member of a class from a protocol or protocol
-    // extension.
-    //
-    // Get the superclass of the 'Self' type parameter.
-    baseTy = (baseEquivClass->concreteType
-              ? baseEquivClass->concreteType
-              : baseEquivClass->superclass);
+  // Make sure that base type didn't get replaced along the way.
+  assert(baseTy->isTypeParameter());
+
+  // There are two situations possible here:
+  //
+  // 1. Member comes from the protocol, which means that it has been
+  //    found through a conformance constraint placed on base e.g. `T: P`.
+  //    In this case member is a `typealias` declaration located in
+  //    protocol or protocol extension.
+  //
+  // 2. Member comes from struct/enum/class type, which means that it
+  //    has been found through same-type constraint on base e.g. `T == Q`.
+  //
+  // If this is situation #2 we need to make sure to switch base to
+  // a concrete type (according to equivalence class) otherwise we'd
+  // end up using incorrect generic signature while attempting to form
+  // a substituted type for the member we found.
+  if (!concrete->getDeclContext()->getSelfProtocolDecl()) {
+    baseTy = baseEquivClass->concreteType ? baseEquivClass->concreteType
+                                          : baseEquivClass->superclass;
     assert(baseTy);
   }
 
@@ -407,33 +420,39 @@ Type TypeChecker::getUnsafeMutablePointerType(SourceLoc loc, Type pointeeType) {
   return getPointerType(*this, loc, pointeeType, PTK_UnsafeMutablePointer);
 }
 
-static Type getStdlibType(TypeChecker &TC, Type &cached, DeclContext *dc,
-                          StringRef name) {
-  if (cached.isNull()) {
-    ModuleDecl *stdlib = TC.Context.getStdlibModule();
-    LookupTypeResult lookup = TC.lookupMemberType(dc, ModuleType::get(stdlib),
-                                                  TC.Context.getIdentifier(
-                                                    name));
-    if (lookup)
-      cached = lookup.back().MemberType;
-  }
-  return cached;
+Type TypeChecker::getStringType(DeclContext *dc) {
+  if (auto typeDecl = Context.getStringDecl())
+    return typeDecl->getDeclaredInterfaceType();
+
+  return Type();
 }
 
-Type TypeChecker::getStringType(DeclContext *dc) {
-  return ::getStdlibType(*this, StringType, dc, "String");
-}
 Type TypeChecker::getSubstringType(DeclContext *dc) {
-  return ::getStdlibType(*this, SubstringType, dc, "Substring");
+  if (auto typeDecl = Context.getSubstringDecl())
+    return typeDecl->getDeclaredInterfaceType();
+
+  return Type();
 }
+
 Type TypeChecker::getIntType(DeclContext *dc) {
-  return ::getStdlibType(*this, IntType, dc, "Int");
+  if (auto typeDecl = Context.getIntDecl())
+    return typeDecl->getDeclaredInterfaceType();
+
+  return Type();
 }
+
 Type TypeChecker::getInt8Type(DeclContext *dc) {
-  return ::getStdlibType(*this, Int8Type, dc, "Int8");
+  if (auto typeDecl = Context.getInt8Decl())
+    return typeDecl->getDeclaredInterfaceType();
+
+  return Type();
 }
+
 Type TypeChecker::getUInt8Type(DeclContext *dc) {
-  return ::getStdlibType(*this, UInt8Type, dc, "UInt8");
+  if (auto typeDecl = Context.getUInt8Decl())
+    return typeDecl->getDeclaredInterfaceType();
+
+  return Type();
 }
 
 /// Find the standard type of exceptions.
@@ -441,12 +460,7 @@ Type TypeChecker::getUInt8Type(DeclContext *dc) {
 /// We call this the "exception type" to try to avoid confusion with
 /// the AST's ErrorType node.
 Type TypeChecker::getExceptionType(DeclContext *dc, SourceLoc loc) {
-  if (NominalTypeDecl *decl = Context.getErrorDecl())
-    return decl->getDeclaredType();
-
-  // Not really sugar, but the actual diagnostic text is fine.
-  diagnose(loc, diag::sugar_type_not_found, 4);
-  return Type();
+  return Context.getErrorDecl()->getDeclaredType();
 }
 
 Type
@@ -589,6 +603,8 @@ Type TypeChecker::resolveTypeInContext(
           if (resolution.getStage() == TypeResolutionStage::Structural) {
             return resolution.resolveSelfAssociatedType(
               selfType, foundDC, typeDecl->getName());
+          } else if (auto assocType = dyn_cast<AssociatedTypeDecl>(typeDecl)) {
+            typeDecl = assocType->getAssociatedTypeAnchor();
           }
         }
       }
@@ -1996,7 +2012,21 @@ Type TypeResolver::resolveAttributedType(TypeAttributes &attrs,
       hasFunctionAttr = true;
       break;
     }
-
+  
+  // If we have an @autoclosure then try resolving the top level type repr
+  // first as it may be pointing to a typealias
+  if (attrs.has(TAK_autoclosure)) {
+    if (auto CITR = dyn_cast<ComponentIdentTypeRepr>(repr)) {
+      auto typeAliasResolver = TypeResolverContext::TypeAliasDecl;
+      if (auto type = resolveTopLevelIdentTypeComponent(resolution, CITR,
+                                                        typeAliasResolver)) {
+        if (auto TAT = dyn_cast<TypeAliasType>(type.getPointer())) {
+          repr = TAT->getDecl()->getUnderlyingTypeLoc().getTypeRepr();
+        }
+      }
+    }
+  }
+  
   // Function attributes require a syntactic function type.
   auto *fnRepr = dyn_cast<FunctionTypeRepr>(repr);
 
@@ -2135,6 +2165,13 @@ Type TypeResolver::resolveAttributedType(TypeAttributes &attrs,
   if (!ty) ty = resolveType(repr, instanceOptions);
   if (!ty || ty->hasError()) return ty;
 
+  // Type aliases inside protocols are not yet resolved in the structural
+  // stage of type resolution
+  if (ty->is<DependentMemberType>() &&
+      resolution.getStage() == TypeResolutionStage::Structural) {
+    return ty;
+  }
+
   // Handle @escaping
   if (hasFunctionAttr && ty->is<FunctionType>()) {
     if (attrs.has(TAK_escaping)) {
@@ -2266,10 +2303,6 @@ bool TypeResolver::resolveASTFunctionTypeParams(
       variadic = true;
     }
 
-    bool autoclosure = false;
-    if (auto *ATR = dyn_cast<AttributedTypeRepr>(eltTypeRepr))
-      autoclosure = ATR->getAttrs().has(TAK_autoclosure);
-
     Type ty = resolveType(eltTypeRepr, thisElementOptions);
     if (!ty) return true;
 
@@ -2281,6 +2314,16 @@ bool TypeResolver::resolveASTFunctionTypeParams(
     // Parameters of polymorphic functions speak in terms of interface types.
     if (requiresMappingOut) {
       ty = ty->mapTypeOutOfContext();
+    }
+
+    bool autoclosure = false;
+    if (auto *ATR = dyn_cast<AttributedTypeRepr>(eltTypeRepr)) {
+      // Make sure that parameter itself is of a function type, otherwise
+      // the problem would already be diagnosed by `resolveAttributedType`
+      // but attributes would stay unchanged. So as a recovery let's drop
+      // 'autoclosure' attribute from the resolved parameter.
+      autoclosure =
+          ty->is<FunctionType>() && ATR->getAttrs().has(TAK_autoclosure);
     }
 
     ValueOwnership ownership;

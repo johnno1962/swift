@@ -182,8 +182,8 @@ func recArea(_ h: Int, w : Int) {
 
 // <rdar://problem/17224804> QoI: Error In Ternary Condition is Wrong
 func r17224804(_ monthNumber : Int) {
-  // expected-error @+2 {{binary operator '+' cannot be applied to operands of type 'String' and 'Int'}}
-  // expected-note @+1 {{overloads for '+' exist with these partially matching parameter lists: (Int, Int), (String, String)}}
+  // expected-error @+2 {{integers can only be expressed by single quoted character literals}}
+  // expected-error @+1 {{result values in '? :' expression have mismatching types 'Int' and 'String'}}
   let monthString = (monthNumber <= 9) ? ("0" + monthNumber) : String(monthNumber)
 }
 
@@ -659,7 +659,7 @@ example21890157.property = "confusing"  // expected-error {{value of optional ty
 struct UnaryOp {}
 
 _ = -UnaryOp() // expected-error {{unary operator '-' cannot be applied to an operand of type 'UnaryOp'}}
-// expected-note@-1 {{overloads for '-' exist with these partially matching parameter lists: (Double), (Float), (Float80)}}
+// expected-note@-1 {{overloads for '-' exist with these partially matching parameter lists: (Double), (Float)}}
 
 
 // <rdar://problem/23433271> Swift compiler segfault in failure diagnosis
@@ -985,8 +985,8 @@ func SR_6272_b() {
 }
 
 func SR_6272_c() {
-  // expected-error@+2 {{binary operator '*' cannot be applied to operands of type 'Int' and 'String'}} {{none}}
-  // expected-note@+1 {{expected an argument list of type '(Int, Int)'}}
+  // expected-warning@+2 {{result of operator '*' is unused}}
+  // expected-error@+1 {{integers can only be expressed by single quoted character literals}}
   Int(3) * "0"
 
   struct S {}
@@ -1065,7 +1065,7 @@ let _: KeyPath<R32101765, Float> = \R32101765.prop32101765.unknown
 // expected-error@-1 {{type 'Int' has no member 'unknown'}}
 
 // rdar://problem/32390726 - Bad Diagnostic: Don't suggest `var` to `let` when binding inside for-statement
-for var i in 0..<10 { // expected-warning {{variable 'i' was never mutated; consider changing to 'let' constant}} {{5-9=}}
+for var i in 0..<10 { // expected-warning {{variable 'i' was never mutated; consider removing 'var' to make it constant}} {{5-9=}}
   _ = i + 1
 }
 

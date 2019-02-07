@@ -95,9 +95,19 @@ private:
     /// This value is represented with an inline integer representation.
     RK_IntegerInline,
 
+    /// This value is represented with a bump-pointer allocated char array
+    /// representing a UTF-8 encoded string.
+    RK_String,
+
     /// This value is a struct or tuple of constants.  This is tracked by the
     /// "aggregate" member of the value union.
     RK_Aggregate,
+
+    /// This value is an enum with no payload.
+    RK_Enum,
+
+    /// This value is an enum with a payload.
+    RK_EnumWithPayload,
 
     /// This represents the address of a memory object.
     RK_DirectAddress,
@@ -124,9 +134,21 @@ private:
     /// This holds the bits of an integer for an inline representation.
     uint64_t integerInline;
 
+    /// When this SymbolicValue is of "String" kind, this pointer stores
+    /// information about the StringRef value it holds.
+    const char *string;
+
     /// When this SymbolicValue is of "Aggregate" kind, this pointer stores
     /// information about the array elements and count.
     const SymbolicValue *aggregate;
+
+    /// When this SymbolicValue is of "Enum" kind, this pointer stores
+    /// information about the enum case type.
+    EnumElementDecl *enumVal;
+
+    /// When this SymbolicValue is of "EnumWithPayload" kind, this pointer
+    /// stores information about the enum case type and its payload.
+    EnumWithPayloadSymbolicValue *enumValWithPayload;
 
     /// When the representationKind is "DirectAddress", this pointer is the
     /// memory object referenced.
@@ -146,6 +168,9 @@ private:
     /// This is the number of bits in an RK_Integer or RK_IntegerInline
     /// representation, which makes the number of entries in the list derivable.
     unsigned integerBitwidth;
+
+    /// This is the number of bytes for an RK_String representation.
+    unsigned stringNumBytes;
 
     /// This is the number of elements for an RK_Aggregate representation.
     unsigned aggregateNumElements;
@@ -168,8 +193,18 @@ public:
     /// This is an integer constant.
     Integer,
 
+    /// String values may have SIL type of Builtin.RawPointer or Builtin.Word
+    /// type.
+    String,
+
     /// This can be an array, struct, tuple, etc.
     Aggregate,
+
+    /// This is an enum without payload.
+    Enum,
+
+    /// This is an enum with payload (formally known as "associated value").
+    EnumWithPayload,
 
     /// This value represents the address of, or into, a memory object.
     Address,
@@ -242,12 +277,38 @@ public:
   APInt getIntegerValue() const;
   unsigned getIntegerValueBitWidth() const;
 
+  /// Returns a SymbolicValue representing a UTF-8 encoded string.
+  static SymbolicValue getString(StringRef string,
+                                 ASTContext &astContext);
+
+  /// Returns the UTF-8 encoded string underlying a SymbolicValue.
+  StringRef getStringValue() const;
+
   /// This returns an aggregate value with the specified elements in it.  This
   /// copies the elements into the specified ASTContext.
   static SymbolicValue getAggregate(ArrayRef<SymbolicValue> elements,
                                     ASTContext &astContext);
 
   ArrayRef<SymbolicValue> getAggregateValue() const;
+
+  /// This returns a constant Symbolic value for the enum case in `decl`, which
+  /// must not have an associated value.
+  static SymbolicValue getEnum(EnumElementDecl *decl) {
+    assert(decl);
+    SymbolicValue result;
+    result.representationKind = RK_Enum;
+    result.value.enumVal = decl;
+    return result;
+  }
+
+  /// `payload` must be a constant.
+  static SymbolicValue getEnumWithPayload(EnumElementDecl *decl,
+                                          SymbolicValue payload,
+                                          ASTContext &astContext);
+
+  EnumElementDecl *getEnumValue() const;
+
+  SymbolicValue getEnumPayloadValue() const;
 
   /// Return a symbolic value that represents the address of a memory object.
   static SymbolicValue getAddress(SymbolicValueMemoryObject *memoryObject) {

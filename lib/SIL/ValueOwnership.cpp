@@ -74,7 +74,6 @@ CONSTANT_OWNERSHIP_INST(Owned, CopyBlock)
 CONSTANT_OWNERSHIP_INST(Owned, CopyBlockWithoutEscaping)
 CONSTANT_OWNERSHIP_INST(Owned, CopyValue)
 CONSTANT_OWNERSHIP_INST(Owned, KeyPath)
-CONSTANT_OWNERSHIP_INST(Owned, PartialApply)
 CONSTANT_OWNERSHIP_INST(Owned, InitExistentialValue)
 CONSTANT_OWNERSHIP_INST(Owned, GlobalValue) // TODO: is this correct?
 
@@ -330,6 +329,13 @@ ValueOwnershipKind ValueOwnershipKindClassifier::visitLoadInst(LoadInst *LI) {
   llvm_unreachable("Unhandled LoadOwnershipQualifier in switch.");
 }
 
+ValueOwnershipKind
+ValueOwnershipKindClassifier::visitPartialApplyInst(PartialApplyInst *PA) {
+  if (PA->isOnStack())
+    return ValueOwnershipKind::Any;
+  return ValueOwnershipKind::Owned;
+}
+
 //===----------------------------------------------------------------------===//
 //                   Builtin OwnershipValueKind Computation
 //===----------------------------------------------------------------------===//
@@ -520,7 +526,6 @@ ValueOwnershipKindClassifier::visitBuiltinInst(BuiltinInst *BI) {
 //===----------------------------------------------------------------------===//
 
 ValueOwnershipKind SILValue::getOwnershipKind() const {
-  // Once we have multiple return values, this must be changed.
   ValueOwnershipKindClassifier Classifier;
   return Classifier.visit(const_cast<ValueBase *>(Value));
 }

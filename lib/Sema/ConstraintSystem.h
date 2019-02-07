@@ -232,11 +232,6 @@ public:
     return getRawOptions() & TVO_PrefersSubtypeBinding;
   }
 
-  bool mustBeMaterializable() const {
-    return !(getRawOptions() & TVO_CanBindToInOut) &&
-           !(getRawOptions() & TVO_CanBindToLValue);
-  }
-
   /// Retrieve the corresponding node in the constraint graph.
   constraints::ConstraintGraphNode *getGraphNode() const { return GraphNode; }
 
@@ -343,10 +338,16 @@ public:
     if (record)
       otherRep->getImpl().recordBinding(*record);
     otherRep->getImpl().ParentOrFixed = getTypeVariable();
-    if (!mustBeMaterializable() && otherRep->getImpl().mustBeMaterializable()) {
+
+    if (canBindToLValue() && !otherRep->getImpl().canBindToLValue()) {
       if (record)
         recordBinding(*record);
       getTypeVariable()->Bits.TypeVariableType.Options &= ~TVO_CanBindToLValue;
+    }
+
+    if (canBindToInOut() && !otherRep->getImpl().canBindToInOut()) {
+      if (record)
+        recordBinding(*record);
       getTypeVariable()->Bits.TypeVariableType.Options &= ~TVO_CanBindToInOut;
     }
   }
@@ -380,15 +381,13 @@ public:
     rep->getImpl().ParentOrFixed = type.getPointer();
   }
 
-  void setMustBeMaterializable(constraints::SavedTypeVariableBindings *record) {
+  void setCannotBindToLValue(constraints::SavedTypeVariableBindings *record) {
     auto rep = getRepresentative(record);
-    if (!rep->getImpl().mustBeMaterializable()) {
+    if (rep->getImpl().canBindToLValue()) {
       if (record)
         rep->getImpl().recordBinding(*record);
       rep->getImpl().getTypeVariable()->Bits.TypeVariableType.Options
         &= ~TVO_CanBindToLValue;
-      rep->getImpl().getTypeVariable()->Bits.TypeVariableType.Options
-        &= ~TVO_CanBindToInOut;
     }
   }
 
@@ -963,6 +962,8 @@ public:
 
 private:
 
+  llvm::DenseMap<Expr *, std::pair<unsigned, Expr *>> ExprWeights;
+
   /// Allocator used for all of the related constraint systems.
   llvm::BumpPtrAllocator Allocator;
 
@@ -1164,11 +1165,9 @@ private:
 
   /// Describes the current solver state.
   struct SolverState {
-    SolverState(Expr *const expr, ConstraintSystem &cs,
+    SolverState(ConstraintSystem &cs,
                 FreeTypeVariableBinding allowFreeTypeVariables);
     ~SolverState();
-
-    llvm::DenseMap<Expr *, unsigned> ExprWeights;
 
     /// The constraint system.
     ConstraintSystem &CS;
@@ -1514,7 +1513,8 @@ public:
   };
 
   ConstraintSystem(TypeChecker &tc, DeclContext *dc,
-                   ConstraintSystemOptions options);
+                   ConstraintSystemOptions options,
+                   Expr *expr = nullptr);
   ~ConstraintSystem();
 
   /// Retrieve the type checker associated with this constraint system.
@@ -1564,13 +1564,13 @@ private:
   /// set of solutions should be filtered even if there is
   /// no single best solution, see `findBestSolution` for
   /// more details.
-  void filterSolutions(SmallVectorImpl<Solution> &solutions,
-                       llvm::DenseMap<Expr *, unsigned> &weights,
-                       bool minimize = false) {
+  void
+  filterSolutions(SmallVectorImpl<Solution> &solutions,
+                  bool minimize = false) {
     if (solutions.size() < 2)
       return;
 
-    if (auto best = findBestSolution(solutions, weights, minimize)) {
+    if (auto best = findBestSolution(solutions, minimize)) {
       if (*best != 0)
         solutions[0] = std::move(solutions[*best]);
       solutions.erase(solutions.begin() + 1, solutions.end());
@@ -1774,6 +1774,12 @@ public:
   /// builder.
   ConstraintLocator *
   getConstraintLocator(const ConstraintLocatorBuilder &builder);
+
+  /// Lookup and return parent associated with given expression.
+  Expr *getParentExpr(Expr *expr) const {
+    auto e = ExprWeights.find(expr);
+    return e != ExprWeights.end() ? e->second.second : nullptr;
+  }
 
 public:
 
@@ -2114,11 +2120,6 @@ public:
   /// a complete solution from partial solutions.
   void assignFixedType(TypeVariableType *typeVar, Type type,
                        bool updateState = true);
-
-  /// Set the TVO_MustBeMaterializable bit on all type variables
-  /// necessary to ensure that the type in question is materializable in a
-  /// viable solution.
-  void setMustBeMaterializableRecursive(Type type);
   
   /// Determine if the type in question is an Array<T> and, if so, provide the
   /// element type of the array.
@@ -2877,7 +2878,8 @@ private:
     /// A set of all constraints which contribute to pontential bindings.
     llvm::SmallPtrSet<Constraint *, 8> Sources;
 
-    PotentialBindings(TypeVariableType *typeVar) : TypeVar(typeVar) {}
+    PotentialBindings(TypeVariableType *typeVar)
+        : TypeVar(typeVar), PotentiallyIncomplete(isGenericParameter()) {}
 
     /// Determine whether the set of bindings is non-empty.
     explicit operator bool() const { return !Bindings.empty(); }
@@ -2942,6 +2944,16 @@ private:
 
     /// Check if this binding is viable for inclusion in the set.
     bool isViable(PotentialBinding &binding) const;
+
+    bool isGenericParameter() const {
+      if (auto *locator = TypeVar->getImpl().getLocator()) {
+        auto path = locator->getPath();
+        return path.empty() ? false
+                            : path.back().getKind() ==
+                                  ConstraintLocator::GenericParameter;
+      }
+      return false;
+    }
 
     void dump(llvm::raw_ostream &out,
               unsigned indent = 0) const LLVM_ATTRIBUTE_USED {
@@ -3139,11 +3151,10 @@ private:
   /// \param diff The differences among the solutions.
   /// \param idx1 The index of the first solution.
   /// \param idx2 The index of the second solution.
-  /// \param weights The weights of the sub-expressions used for ranking.
   static SolutionCompareResult
   compareSolutions(ConstraintSystem &cs, ArrayRef<Solution> solutions,
                    const SolutionDiff &diff, unsigned idx1, unsigned idx2,
-                   llvm::DenseMap<Expr *, unsigned> &weights);
+                   llvm::DenseMap<Expr *, std::pair<unsigned, Expr *>> &weights);
 
 public:
   /// Increase the score of the given kind for the current (partial) solution
@@ -3158,7 +3169,6 @@ public:
   /// solution.
   ///
   /// \param solutions The set of viable solutions to consider.
-  /// \param weights The weights of the sub-expressions used for ranking.
   ///
   /// \param minimize If true, then in the case where there is no single
   /// best solution, minimize the set of solutions by removing any solutions
@@ -3167,9 +3177,9 @@ public:
   ///
   /// \returns The index of the best solution, or nothing if there was no
   /// best solution.
-  Optional<unsigned> findBestSolution(SmallVectorImpl<Solution> &solutions,
-                                      llvm::DenseMap<Expr *, unsigned> &weights,
-                                      bool minimize);
+  Optional<unsigned>
+  findBestSolution(SmallVectorImpl<Solution> &solutions,
+                   bool minimize);
 
   /// Apply a given solution to the expression, producing a fully
   /// type-checked expression.

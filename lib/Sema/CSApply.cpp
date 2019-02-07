@@ -1905,15 +1905,12 @@ namespace {
 
       DeclName initName(tc.Context, DeclBaseName::createConstructor(),
                         { tc.Context.Id_nilLiteral });
-      return convertLiteral(expr, type, cs.getType(expr), protocol,
-                            Identifier(), initName,
-                            nullptr, Identifier(),
-                            Identifier(),
-                            [] (Type type) -> bool {
-                              return false;
-                            },
-                            diag::nil_literal_broken_proto,
-                            diag::nil_literal_broken_proto);
+      return convertLiteralInPlace(expr, type, protocol,
+                                   Identifier(), initName,
+                                   nullptr,
+                                   Identifier(),
+                                   diag::nil_literal_broken_proto,
+                                   diag::nil_literal_broken_proto);
     }
 
     
@@ -2002,18 +1999,14 @@ namespace {
                         { tc.Context.Id_booleanLiteral });
       DeclName builtinInitName(tc.Context, DeclBaseName::createConstructor(),
                                { tc.Context.Id_builtinBooleanLiteral });
-      return convertLiteral(
+      return convertLiteralInPlace(
                expr,
                type,
-               cs.getType(expr),
                protocol,
                tc.Context.Id_BooleanLiteralType,
                initName,
                builtinProtocol,
-               Type(BuiltinIntegerType::get(BuiltinIntegerWidth::fixed(1), 
-                                            tc.Context)),
                builtinInitName,
-               nullptr,
                diag::boolean_literal_broken_proto,
                diag::builtin_boolean_literal_broken_proto);
     }
@@ -2032,6 +2025,8 @@ namespace {
 
       bool isStringLiteral = true;
       bool isGraphemeClusterLiteral = false;
+      bool isCharacter = stringLiteral && stringLiteral->isCharacterLiteral();
+      bool notCharacter = stringLiteral && !stringLiteral->isCharacterLiteral();
       ProtocolDecl *protocol = tc.getProtocol(
           expr->getLoc(), KnownProtocolKind::ExpressibleByStringLiteral);
 
@@ -2057,7 +2052,7 @@ namespace {
 
       // For type-sugar reasons, prefer the spelling of the default literal
       // type.
-      if (auto defaultType = tc.getDefaultType(protocol, dc)) {
+      if (auto defaultType = tc.getDefaultType(protocol, dc, isCharacter)) {
         if (defaultType->isEqual(type))
           type = defaultType;
       }
@@ -2068,6 +2063,25 @@ namespace {
       DeclName builtinLiteralFuncName;
       Diag<> brokenProtocolDiag;
       Diag<> brokenBuiltinProtocolDiag;
+
+      auto migrateQuotes = [&]() {
+        if (notCharacter) {
+          SourceManager &SM = tc.Context.SourceMgr;
+          SourceRange range = stringLiteral->getSourceRange();
+          range.End = Lexer::getLocForEndOfToken(SM, range.Start);
+          std::string body = SM
+            .extractText(CharSourceRange(SM, range.Start, range.End))
+            .drop_front().drop_back().str();
+
+          if (body == "'")
+            body = "\\'";
+          else if (body == "\\\"")
+            body = "\"";
+
+//          tc.diagnose(expr->getLoc(), diag::character_literal_migration, type)
+//            .fixItReplaceChars(range.Start, range.End, "'" + body + "'");
+        }
+      };
 
       if (isStringLiteral) {
         literalType = tc.Context.Id_StringLiteralType;
@@ -2108,6 +2122,8 @@ namespace {
             diag::extended_grapheme_cluster_literal_broken_proto;
         brokenBuiltinProtocolDiag =
             diag::builtin_extended_grapheme_cluster_literal_broken_proto;
+
+        migrateQuotes();
       } else {
         // Otherwise, we should have just one Unicode scalar.
         literalType = tc.Context.Id_UnicodeScalarLiteralType;
@@ -2128,6 +2144,23 @@ namespace {
             diag::builtin_unicode_scalar_literal_broken_proto;
 
         stringLiteral->setEncoding(StringLiteralExpr::OneUnicodeScalar);
+
+        migrateQuotes();
+
+        // Check that character literal is ASCII when expressing integer type
+        if (auto structTy = dyn_cast<StructType>(type->getCanonicalType())) {
+          auto valueProp = structTy->getDecl()->getStoredProperties().front();
+          if (auto intTy = dyn_cast<BuiltinIntegerType>(valueProp->getType()
+                                                        ->getCanonicalType())) {
+            if (notCharacter)
+              tc.diagnose(expr->getLoc(), diag::character_literal_quotes);
+
+            bool notASCII = stringLiteral->getValue()[0] & 0x80;
+            if (intTy && isCharacter && notASCII)
+              tc.diagnose(expr->getLoc(), diag::character_literal_not_ascii,
+                          type);
+          }
+        }
       }
 
       return convertLiteralInPlace(expr,
@@ -6791,9 +6824,8 @@ static Type adjustSelfTypeForMember(Type baseTy, ValueDecl *member,
   // If the base of the access is mutable, then we may be invoking a getter or
   // setter that requires the base to be mutable.
   auto *SD = cast<AbstractStorageDecl>(member);
-  bool isSettableFromHere = SD->isSettable(UseDC)
-    && (!UseDC->getASTContext().LangOpts.EnableAccessControl
-        || SD->isSetterAccessibleFrom(UseDC));
+  bool isSettableFromHere =
+      SD->isSettable(UseDC) && SD->isSetterAccessibleFrom(UseDC);
 
   // If neither the property's getter nor its setter are mutating, the base
   // can be an rvalue.
@@ -7057,6 +7089,8 @@ Expr *ExprRewriter::convertLiteralInPlace(Expr *literal,
     // Set the builtin initializer.
     if (auto stringLiteral = dyn_cast<StringLiteralExpr>(literal))
       stringLiteral->setBuiltinInitializer(witness);
+    else if (auto booleanLiteral = dyn_cast<BooleanLiteralExpr>(literal))
+      booleanLiteral->setBuiltinInitializer(witness);
     else {
       cast<MagicIdentifierLiteralExpr>(literal)
         ->setBuiltinInitializer(witness);
@@ -7100,8 +7134,12 @@ Expr *ExprRewriter::convertLiteralInPlace(Expr *literal,
     return nullptr;
 
   // Set the initializer.
-  if (auto stringLiteral = dyn_cast<StringLiteralExpr>(literal))
+  if (auto nilLiteral = dyn_cast<NilLiteralExpr>(literal))
+    nilLiteral->setInitializer(witness);
+  else if (auto stringLiteral = dyn_cast<StringLiteralExpr>(literal))
     stringLiteral->setInitializer(witness);
+  else if (auto booleanLiteral = dyn_cast<BooleanLiteralExpr>(literal))
+    booleanLiteral->setInitializer(witness);
   else
     cast<MagicIdentifierLiteralExpr>(literal)->setInitializer(witness);
 
@@ -7809,23 +7847,31 @@ bool ConstraintSystem::applySolutionFixes(Expr *E, const Solution &solution) {
     if (fixes == fixesPerExpr.end())
       return false;
 
-    bool diagnosed = false;
-    for (const auto *fix : fixes->second)
-      diagnosed |= fix->diagnose(E);
-    return diagnosed;
+    bool diagnosedError = false;
+    for (const auto *fix : fixes->second) {
+      auto diagnosed = fix->diagnose(E);
+
+      if (fix->isWarning()) {
+        assert(diagnosed && "warnings should always be diagnosed");
+        (void)diagnosed;
+      } else {
+        diagnosedError |= diagnosed;
+      }
+    }
+    return diagnosedError;
   };
 
-  bool diagnosed = false;
+  bool diagnosedError = false;
   E->forEachChildExpr([&](Expr *subExpr) -> Expr * {
     // Diagnose root expression at the end to
     // preserve ordering.
     if (subExpr != E)
-      diagnosed |= diagnoseExprFailures(subExpr);
+      diagnosedError |= diagnoseExprFailures(subExpr);
     return subExpr;
   });
 
-  diagnosed |= diagnoseExprFailures(E);
-  return diagnosed;
+  diagnosedError |= diagnoseExprFailures(E);
+  return diagnosedError;
 }
 
 /// Apply a given solution to the expression, producing a fully
@@ -7840,15 +7886,21 @@ Expr *ConstraintSystem::applySolution(Solution &solution, Expr *expr,
     if (shouldSuppressDiagnostics())
       return nullptr;
 
-    // If we can diagnose the problem with the fixits that we've pre-assumed,
-    // do so now.
-    if (applySolutionFixes(expr, solution))
-      return nullptr;
+    bool diagnosedErrorsViaFixes = applySolutionFixes(expr, solution);
+    // If all of the available fixes would result in a warning,
+    // we can go ahead and apply this solution to AST.
+    if (!llvm::all_of(solution.Fixes, [](const ConstraintFix *fix) {
+          return fix->isWarning();
+        })) {
+      // If we already diagnosed any errors via fixes, that's it.
+      if (diagnosedErrorsViaFixes)
+        return nullptr;
 
-    // If we didn't manage to diagnose anything well, so fall back to
-    // diagnosing mining the system to construct a reasonable error message.
-    diagnoseFailureForExpr(expr);
-    return nullptr;
+      // If we didn't manage to diagnose anything well, so fall back to
+      // diagnosing mining the system to construct a reasonable error message.
+      diagnoseFailureForExpr(expr);
+      return nullptr;
+    }
   }
 
   // Mark any normal conformances used in this solution as "used".
