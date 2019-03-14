@@ -500,18 +500,18 @@ extension FixedWidthInteger {
   }
 }
 
-extension Array where Element: FixedWidthInteger {
+extension RangeReplaceableCollection where Element: FixedWidthInteger {
   /// Construct array of FixedWidthIntegers with asciiValues in String `v`.
   ///
   /// - Precondition: all characters in `v` must be in the ASCII range.
   @available(swift 5.1)
   public init(ascii v: String) {
-    self = v.map {
+    self.init(v.map {
       guard let ascii = $0.asciiValue else {
         _preconditionFailure("Only ASCII strings accepted in this context")
       }
       return Element(ascii)
-    }
+    })
   }
 }
 
@@ -543,7 +543,7 @@ extension Unicode.Scalar {
   @available(swift 5.1)
   public static func ~=<T: FixedWidthInteger> (pattern: Unicode.Scalar, value: T) -> Bool {
     _precondition(pattern.isASCII, "Only ASCII Unicode.Scalar accepted in this context")
-    return value == pattern
+    return value == T(pattern.value)
   }
 }
 
