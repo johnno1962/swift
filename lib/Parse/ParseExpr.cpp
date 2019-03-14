@@ -1778,7 +1778,7 @@ createStringLiteralExprFromSegment(ASTContext &Ctx,
                                    const Lexer *L,
                                    Lexer::StringSegment &Segment,
                                    SourceLoc TokenLoc,
-                                   bool IsCharacterLiteral = false) {
+                                   bool IsSingleQuoteLiteral = false) {
   assert(Segment.Kind == Lexer::StringSegment::Literal);
   // FIXME: Consider lazily encoding the string when needed.
   llvm::SmallString<256> Buf;
@@ -1789,7 +1789,7 @@ createStringLiteralExprFromSegment(ASTContext &Ctx,
     EncodedStr = Ctx.AllocateCopy(EncodedStr);
   }
   return new (Ctx) StringLiteralExpr(EncodedStr, TokenLoc,
-                                     false, IsCharacterLiteral);
+                                     false, IsSingleQuoteLiteral);
 }
 
 ParserStatus Parser::
@@ -2000,7 +2000,7 @@ ParserResult<Expr> Parser::parseExprStringLiteral() {
   L->getStringLiteralSegments(Tok, Segments);
 
   Token EntireTok = Tok;
-  bool isCharacterLiteral = Tok.isCharacterLiteral();
+  bool isSingleQuoteLiteral = Tok.isSingleQuoteLiteral();
 
   // The start location of the entire string literal.
   SourceLoc Loc = Tok.getLoc();
@@ -2011,15 +2011,15 @@ ParserResult<Expr> Parser::parseExprStringLiteral() {
       Segments.front().Kind == Lexer::StringSegment::Literal) {
     consumeToken();
     auto expr = createStringLiteralExprFromSegment(Context, L, Segments.front(),
-                                                   Loc, isCharacterLiteral);
-    if (isCharacterLiteral && !expr->isSingleExtendedGraphemeCluster()) {
-      diagnose(EntireTok, diag::character_literal_not_cluster);
+                                                   Loc, isSingleQuoteLiteral);
+    if (isSingleQuoteLiteral && !expr->isSingleUnicodeScalar()) {
+      diagnose(EntireTok, diag::not_single_uncode_scalar);
       return makeParserResult(new (Context) ErrorExpr(Loc));
     }
     return makeParserResult(expr);
   }
 
-  if (isCharacterLiteral) {
+  if (isSingleQuoteLiteral) {
     consumeToken();
     diagnose(EntireTok, diag::character_literal_interpolating);
     return makeParserResult(new (Context) ErrorExpr(Loc));

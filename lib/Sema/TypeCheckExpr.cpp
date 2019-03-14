@@ -675,7 +675,7 @@ getKnownProtocolKindIfAny(const ProtocolDecl *protocol) {
 }
 
 Type TypeChecker::getDefaultType(ProtocolDecl *protocol, DeclContext *dc,
-                                 bool isCharacterLiteral) {
+                                 bool isSingleQuoteLiteral) {
   // This is a tempoprary workaround until ExpressibleByUnicodeScalarLiteral
   // and ExpressibleByExtendedGraphemeClusterLiteral are removed as literal
   // protocols for Strings to give character literals Character default type.
@@ -684,8 +684,8 @@ Type TypeChecker::getDefaultType(ProtocolDecl *protocol, DeclContext *dc,
   // their literal type CharacterLiteralType = Character in Policy.swift as
   // referred to in KnownProtocols.def which will complete making String
   // and Character literals distinct in time for Swift 6.
-  if (isCharacterLiteral) {
-    static const char *name = "CharacterLiteralType";
+  if (isSingleQuoteLiteral) {
+    static const char *name = "UnicodeScalarLiteralType";
     TypeChecker &tc = createForContext(dc->getASTContext());
     Type type = lookupDefaultLiteralType(tc, dc, name);
 

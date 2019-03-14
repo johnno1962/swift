@@ -102,7 +102,7 @@ public typealias UnicodeScalarType = String
 /// grapheme cluster literal.
 public typealias ExtendedGraphemeClusterType = String
 /// The default type for an otherwise-unconstrained 'character' literal.
-public typealias CharacterLiteralType = Character
+public typealias UnicodeScalarLiteralType = Unicode.Scalar
 /// The default type for an otherwise-unconstrained "string" literal.
 public typealias StringLiteralType = String
 

@@ -328,12 +328,12 @@ static void validateMultilineIndents(const Token &Str, DiagnosticEngine *Diags);
 void Lexer::formStringLiteralToken(const char *TokStart,
                                    bool IsMultilineString,
                                    unsigned CustomDelimiterLen,
-                                   bool IsCharacterLiteral) {
+                                   bool IsSingleQuoteLiteral) {
   formToken(tok::string_literal, TokStart);
   if (NextToken.is(tok::eof))
     return;
   NextToken.setStringLiteral(IsMultilineString, CustomDelimiterLen,
-                             IsCharacterLiteral);
+                             IsSingleQuoteLiteral);
 
   if (IsMultilineString && Diags)
     validateMultilineIndents(NextToken, Diags);

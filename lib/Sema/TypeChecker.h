@@ -1585,7 +1585,7 @@ public:
   /// \returns the default type, or null if there is no default type for
   /// this protocol.
   Type getDefaultType(ProtocolDecl *protocol, DeclContext *dc,
-                      bool isCharacterLiteral = false);
+                      bool isSingleQuoteLiteral = false);
 
   /// Convert the given expression to the given type.
   ///

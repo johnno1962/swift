@@ -1896,8 +1896,8 @@ namespace {
 
       bool isStringLiteral = true;
       bool isGraphemeClusterLiteral = false;
-      bool isCharacter = stringLiteral && stringLiteral->isCharacterLiteral();
-      bool notCharacter = stringLiteral && !stringLiteral->isCharacterLiteral();
+      bool isSingle = stringLiteral && stringLiteral->isSingleQuoteLiteral();
+      bool notSingle = stringLiteral && !isSingle;
       ProtocolDecl *protocol = tc.getProtocol(
           expr->getLoc(), KnownProtocolKind::ExpressibleByStringLiteral);
 
@@ -1923,7 +1923,7 @@ namespace {
 
       // For type-sugar reasons, prefer the spelling of the default literal
       // type.
-      if (auto defaultType = tc.getDefaultType(protocol, dc, isCharacter)) {
+      if (auto defaultType = tc.getDefaultType(protocol, dc, isSingle)) {
         if (defaultType->isEqual(type))
           type = defaultType;
       }
@@ -1934,25 +1934,6 @@ namespace {
       DeclName builtinLiteralFuncName;
       Diag<> brokenProtocolDiag;
       Diag<> brokenBuiltinProtocolDiag;
-
-      auto migrateQuotes = [&]() {
-        if (notCharacter) {
-          SourceManager &SM = tc.Context.SourceMgr;
-          SourceRange range = stringLiteral->getSourceRange();
-          range.End = Lexer::getLocForEndOfToken(SM, range.Start);
-          std::string body = SM
-            .extractText(CharSourceRange(SM, range.Start, range.End))
-            .drop_front().drop_back().str();
-
-          if (body == "'")
-            body = "\\'";
-          else if (body == "\\\"")
-            body = "\"";
-
-//          tc.diagnose(expr->getLoc(), diag::character_literal_migration, type)
-//            .fixItReplaceChars(range.Start, range.End, "'" + body + "'");
-        }
-      };
 
       if (isStringLiteral) {
         literalType = tc.Context.Id_StringLiteralType;
@@ -1994,7 +1975,7 @@ namespace {
         brokenBuiltinProtocolDiag =
             diag::builtin_extended_grapheme_cluster_literal_broken_proto;
 
-        migrateQuotes();
+//        migrateQuotes();
       } else {
         // Otherwise, we should have just one Unicode scalar.
         literalType = tc.Context.Id_UnicodeScalarLiteralType;
@@ -2016,21 +1997,21 @@ namespace {
 
         stringLiteral->setEncoding(StringLiteralExpr::OneUnicodeScalar);
 
-        migrateQuotes();
+        if (notSingle) {
+          SourceManager &SM = tc.Context.SourceMgr;
+          SourceRange range = stringLiteral->getSourceRange();
+          range.End = Lexer::getLocForEndOfToken(SM, range.Start);
+          std::string body = SM
+          .extractText(CharSourceRange(SM, range.Start, range.End))
+          .drop_front().drop_back().str();
 
-        // Check that character literal is ASCII when expressing integer type
-        if (auto structTy = dyn_cast<StructType>(type->getCanonicalType())) {
-          auto valueProp = structTy->getDecl()->getStoredProperties().front();
-          if (auto intTy = dyn_cast<BuiltinIntegerType>(valueProp->getType()
-                                                        ->getCanonicalType())) {
-            if (notCharacter)
-              tc.diagnose(expr->getLoc(), diag::character_literal_quotes);
+          if (body == "'")
+            body = "\\'";
+          else if (body == "\\\"")
+            body = "\"";
 
-            bool notASCII = stringLiteral->getValue()[0] & 0x80;
-            if (intTy && isCharacter && notASCII)
-              tc.diagnose(expr->getLoc(), diag::character_literal_not_ascii,
-                          type);
-          }
+//          tc.diagnose(expr->getLoc(), diag::character_literal_migration, type)
+//            .fixItReplaceChars(range.Start, range.End, "'" + body + "'");
         }
       }
 

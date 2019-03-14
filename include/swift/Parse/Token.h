@@ -46,7 +46,7 @@ class Token {
   unsigned MultilineString : 1;
 
   /// Single quoted grapheme literal
-  unsigned CharacterLiteral : 1;
+  unsigned SingleQuoteLiteral : 1;
 
   /// Length of custom delimiter of "raw" string literals
   unsigned CustomDelimiterLen : 8;
@@ -68,7 +68,7 @@ class Token {
 public:
   Token(tok Kind, StringRef Text, unsigned CommentLength = 0)
           : Kind(Kind), AtStartOfLine(false), EscapedIdentifier(false),
-            MultilineString(false), CharacterLiteral(false),
+            MultilineString(false), SingleQuoteLiteral(false),
             CustomDelimiterLen(0), CommentLength(CommentLength), Text(Text) {}
 
   Token() : Token(tok::NUM_TOKENS, {}, 0) {}
@@ -229,8 +229,8 @@ public:
     return MultilineString;
   }
   /// True if the token is 'character' literal.
-  bool isCharacterLiteral() const {
-    return CharacterLiteral;
+  bool isSingleQuoteLiteral() const {
+    return SingleQuoteLiteral;
   }
   /// Count of extending escaping '#'.
   unsigned getCustomDelimiterLen() const {
@@ -238,11 +238,11 @@ public:
   }
   /// Set characteristics of string literal token.
   void setStringLiteral(bool IsMultilineString, unsigned CustomDelimiterLen,
-                        bool IsCharacterLiteral = false) {
+                        bool IsSingleQuoteLiteral = false) {
     assert(Kind == tok::string_literal);
     this->MultilineString = IsMultilineString;
     this->CustomDelimiterLen = CustomDelimiterLen;
-    this->CharacterLiteral = IsCharacterLiteral;
+    this->SingleQuoteLiteral = IsSingleQuoteLiteral;
   }
   
   /// getLoc - Return a source location identifier for the specified
