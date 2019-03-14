@@ -499,20 +499,20 @@ func stringliterals(_ d: [String: Int]) {
 }
 
 func testSingleQuoteStringLiterals() {
-  _ = 'abc' // expected-error{{character literal is not a single extended grapheme cluster}}
-  _ = 'abc' + "def" // expected-error{{character literal is not a single extended grapheme cluster}}
+  _ = 'abc' // expected-error{{character literal is not a single uncode scalar}}
+  _ = 'abc' + "def" // expected-error{{character literal is not a single uncode scalar}}
 
-  _ = 'ab\nc' // expected-error{{character literal is not a single extended grapheme cluster}}
+  _ = 'ab\nc' // expected-error{{character literal is not a single uncode scalar}}
 
-  _ = "abc\('def')" // expected-error{{character literal is not a single extended grapheme cluster}}
+  _ = "abc\('def')" // expected-error{{character literal is not a single uncode scalar}}
   _ = 'ab\("c")' // expected-error{{character literal can not contain interpolations}}
   _ = 'a\('b')c' // expected-error{{character literal can not contain interpolations}}
 
-  _ = 'ab\'c' // expected-error{{character literal is not a single extended grapheme cluster}}
+  _ = 'ab\'c' // expected-error{{character literal is not a single uncode scalar}}
 
-  _ = 'ab"c' // expected-error{{character literal is not a single extended grapheme cluster}}
-  _ = 'ab\"c' // expected-error{{character literal is not a single extended grapheme cluster}}
-  _ = 'ab\\"c' // expected-error{{character literal is not a single extended grapheme cluster}}
+  _ = 'ab"c' // expected-error{{character literal is not a single uncode scalar}}
+  _ = 'ab\"c' // expected-error{{character literal is not a single uncode scalar}}
+  _ = 'ab\\"c' // expected-error{{character literal is not a single uncode scalar}}
 
   _ = "abc' // expected-error{{unterminated string literal}}
   _ = 'abc" // expected-error{{unterminated string literal}}

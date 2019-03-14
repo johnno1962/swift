@@ -685,7 +685,7 @@ Type TypeChecker::getDefaultType(ProtocolDecl *protocol, DeclContext *dc,
   // referred to in KnownProtocols.def which will complete making String
   // and Character literals distinct in time for Swift 6.
   if (isSingleQuoteLiteral) {
-    static const char *name = "UnicodeScalarLiteralType";
+    static const char *name = "SingleQuoteLiteralType";
     TypeChecker &tc = createForContext(dc->getASTContext());
     Type type = lookupDefaultLiteralType(tc, dc, name);
 
