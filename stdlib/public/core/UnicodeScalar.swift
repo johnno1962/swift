@@ -506,11 +506,11 @@ extension RangeReplaceableCollection where Element: FixedWidthInteger {
   /// - Precondition: all characters in `v` must be in the ASCII range.
   @available(swift 5.1)
   public init(ascii v: String) {
-    self.init(v.map {
-      guard let ascii = $0.asciiValue else {
-        _preconditionFailure("Only ASCII strings accepted in this context")
-      }
-      return Element(ascii)
+    self.init(v.utf8.map {
+        guard $0 < 128 else {
+            _preconditionFailure("Only ASCII strings accepted in this context")
+        }
+        return Element($0)
     })
   }
 }
