@@ -1896,6 +1896,8 @@ namespace {
 
       bool isStringLiteral = true;
       bool isGraphemeClusterLiteral = false;
+      bool isSingle = stringLiteral && stringLiteral->isSingleQuoteLiteral();
+      bool notSingle = stringLiteral && !isSingle;
       ProtocolDecl *protocol = tc.getProtocol(
           expr->getLoc(), KnownProtocolKind::ExpressibleByStringLiteral);
 
@@ -1921,7 +1923,7 @@ namespace {
 
       // For type-sugar reasons, prefer the spelling of the default literal
       // type.
-      if (auto defaultType = tc.getDefaultType(protocol, dc)) {
+      if (auto defaultType = tc.getDefaultType(protocol, dc, isSingle)) {
         if (defaultType->isEqual(type))
           type = defaultType;
       }
@@ -1932,6 +1934,25 @@ namespace {
       DeclName builtinLiteralFuncName;
       Diag<> brokenProtocolDiag;
       Diag<> brokenBuiltinProtocolDiag;
+
+      auto migrateQuotes = [&]() {
+        if (notSingle) {
+          SourceManager &SM = tc.Context.SourceMgr;
+          SourceRange range = stringLiteral->getSourceRange();
+          range.End = Lexer::getLocForEndOfToken(SM, range.Start);
+          std::string body = SM
+          .extractText(CharSourceRange(SM, range.Start, range.End))
+          .drop_front().drop_back().str();
+
+          if (body == "'")
+            body = "\\'";
+          else if (body == "\\\"")
+            body = "\"";
+
+          tc.diagnose(expr->getLoc(), diag::character_literal_migration, type)
+            .fixItReplaceChars(range.Start, range.End, "'" + body + "'");
+        }
+      };
 
       if (isStringLiteral) {
         literalType = tc.Context.Id_StringLiteralType;
@@ -1972,6 +1993,8 @@ namespace {
             diag::extended_grapheme_cluster_literal_broken_proto;
         brokenBuiltinProtocolDiag =
             diag::builtin_extended_grapheme_cluster_literal_broken_proto;
+
+        migrateQuotes();
       } else {
         // Otherwise, we should have just one Unicode scalar.
         literalType = tc.Context.Id_UnicodeScalarLiteralType;
@@ -1992,6 +2015,8 @@ namespace {
             diag::builtin_unicode_scalar_literal_broken_proto;
 
         stringLiteral->setEncoding(StringLiteralExpr::OneUnicodeScalar);
+
+        migrateQuotes();
       }
 
       return convertLiteralInPlace(expr,

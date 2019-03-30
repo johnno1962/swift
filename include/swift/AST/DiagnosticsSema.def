@@ -2819,6 +2819,14 @@ ERROR(builtin_string_literal_broken_proto,none,
 ERROR(string_literal_broken_proto,none,
       "protocol 'ExpressibleByStringLiteral' is broken", ())
 
+ERROR(character_literal_not_ascii,none,
+      "character literal can only contain ASCII when expressing %0", (Type))
+ERROR(character_literal_quotes,none,
+      "integers can only be expressed by single quoted character literals", ())
+WARNING(character_literal_migration,none,
+      "double quotes deprecated in favour of single quotes to express %0",
+      (Type))
+
 // Array literals
 ERROR(should_use_dictionary_literal,none,
       "dictionary of type %0 cannot be %select{used|initialized}1 "

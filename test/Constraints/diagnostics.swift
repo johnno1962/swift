@@ -986,7 +986,7 @@ func SR_6272_b() {
 }
 
 func SR_6272_c() {
-  // expected-error@+2 {{binary operator '*' cannot be applied to operands of type 'Int' and 'String'}} {{none}}
+  // expected-error@+2 {{binary operator '*' cannot be applied to operands of type 'Int' and 'String'}}
   // expected-note@+1 {{expected an argument list of type '(Int, Int)'}}
   Int(3) * "0"
 

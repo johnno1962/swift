@@ -1584,7 +1584,8 @@ public:
   ///
   /// \returns the default type, or null if there is no default type for
   /// this protocol.
-  Type getDefaultType(ProtocolDecl *protocol, DeclContext *dc);
+  Type getDefaultType(ProtocolDecl *protocol, DeclContext *dc,
+                      Expr *achor = nullptr);
 
   /// Convert the given expression to the given type.
   ///

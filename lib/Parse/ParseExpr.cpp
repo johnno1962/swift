@@ -1777,7 +1777,8 @@ static StringLiteralExpr *
 createStringLiteralExprFromSegment(ASTContext &Ctx,
                                    const Lexer *L,
                                    Lexer::StringSegment &Segment,
-                                   SourceLoc TokenLoc) {
+                                   SourceLoc TokenLoc,
+                                   bool IsSingleQuoteLiteral = false) {
   assert(Segment.Kind == Lexer::StringSegment::Literal);
   // FIXME: Consider lazily encoding the string when needed.
   llvm::SmallString<256> Buf;
@@ -1787,7 +1788,8 @@ createStringLiteralExprFromSegment(ASTContext &Ctx,
            "Returned string is not from buffer?");
     EncodedStr = Ctx.AllocateCopy(EncodedStr);
   }
-  return new (Ctx) StringLiteralExpr(EncodedStr, TokenLoc);
+  return new (Ctx) StringLiteralExpr(EncodedStr, TokenLoc,
+                                     false, IsSingleQuoteLiteral);
 }
 
 ParserStatus Parser::
@@ -1998,6 +2000,7 @@ ParserResult<Expr> Parser::parseExprStringLiteral() {
   L->getStringLiteralSegments(Tok, Segments);
 
   Token EntireTok = Tok;
+  bool isSingleQuoteLiteral = Tok.isSingleQuoteLiteral();
 
   // The start location of the entire string literal.
   SourceLoc Loc = Tok.getLoc();
@@ -2007,8 +2010,19 @@ ParserResult<Expr> Parser::parseExprStringLiteral() {
   if (Segments.size() == 1 &&
       Segments.front().Kind == Lexer::StringSegment::Literal) {
     consumeToken();
-    return makeParserResult(
-        createStringLiteralExprFromSegment(Context, L, Segments.front(), Loc));
+    auto expr = createStringLiteralExprFromSegment(Context, L, Segments.front(),
+                                                   Loc, isSingleQuoteLiteral);
+    if (isSingleQuoteLiteral && !expr->isSingleUnicodeScalar()) {
+      diagnose(EntireTok, diag::not_single_uncode_scalar);
+      return makeParserResult(new (Context) ErrorExpr(Loc));
+    }
+    return makeParserResult(expr);
+  }
+
+  if (isSingleQuoteLiteral) {
+    consumeToken();
+    diagnose(EntireTok, diag::character_literal_interpolating);
+    return makeParserResult(new (Context) ErrorExpr(Loc));
   }
 
   // We are now sure this is a string interpolation expression.

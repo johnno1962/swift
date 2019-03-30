@@ -114,10 +114,13 @@ ProtocolDecl *TypeChecker::getLiteralProtocol(Expr *expr) {
                        KnownProtocolKind::ExpressibleByBooleanLiteral);
 
   if (const auto *SLE = dyn_cast<StringLiteralExpr>(expr)) {
-    if (SLE->isSingleUnicodeScalar())
-      return getProtocol(
-          expr->getLoc(),
-          KnownProtocolKind::ExpressibleByUnicodeScalarLiteral);
+    if (!Context.LangOpts.isSwiftVersionAtLeast(6) ||
+        SLE->isSingleQuoteLiteral()) {
+      if (SLE->isSingleUnicodeScalar())
+        return getProtocol(
+            expr->getLoc(),
+            KnownProtocolKind::ExpressibleByUnicodeScalarLiteral);
+    }
 
     if (SLE->isSingleExtendedGraphemeCluster())
       return getProtocol(
