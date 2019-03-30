@@ -533,7 +533,7 @@ ConstraintSystem::getPotentialBindings(TypeVariableType *typeVar) {
       // potential binding.
       Expr *anchor = constraint->getLocator()->anchor;
       auto defaultType = tc.getDefaultType(constraint->getProtocol(), DC,
-                         StringLiteralExpr::isSingleQuoteLiteralExpr(anchor));
+                                           anchor);
       if (!defaultType)
         continue;
 

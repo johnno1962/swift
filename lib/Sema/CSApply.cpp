@@ -1935,6 +1935,25 @@ namespace {
       Diag<> brokenProtocolDiag;
       Diag<> brokenBuiltinProtocolDiag;
 
+      auto migrateQuotes = [&]() {
+        if (notSingle) {
+          SourceManager &SM = tc.Context.SourceMgr;
+          SourceRange range = stringLiteral->getSourceRange();
+          range.End = Lexer::getLocForEndOfToken(SM, range.Start);
+          std::string body = SM
+          .extractText(CharSourceRange(SM, range.Start, range.End))
+          .drop_front().drop_back().str();
+
+          if (body == "'")
+            body = "\\'";
+          else if (body == "\\\"")
+            body = "\"";
+
+          tc.diagnose(expr->getLoc(), diag::character_literal_migration, type)
+            .fixItReplaceChars(range.Start, range.End, "'" + body + "'");
+        }
+      };
+
       if (isStringLiteral) {
         literalType = tc.Context.Id_StringLiteralType;
 
@@ -1975,7 +1994,7 @@ namespace {
         brokenBuiltinProtocolDiag =
             diag::builtin_extended_grapheme_cluster_literal_broken_proto;
 
-//        migrateQuotes();
+        migrateQuotes();
       } else {
         // Otherwise, we should have just one Unicode scalar.
         literalType = tc.Context.Id_UnicodeScalarLiteralType;
@@ -1997,22 +2016,7 @@ namespace {
 
         stringLiteral->setEncoding(StringLiteralExpr::OneUnicodeScalar);
 
-        if (notSingle) {
-          SourceManager &SM = tc.Context.SourceMgr;
-          SourceRange range = stringLiteral->getSourceRange();
-          range.End = Lexer::getLocForEndOfToken(SM, range.Start);
-          std::string body = SM
-          .extractText(CharSourceRange(SM, range.Start, range.End))
-          .drop_front().drop_back().str();
-
-          if (body == "'")
-            body = "\\'";
-          else if (body == "\\\"")
-            body = "\"";
-
-//          tc.diagnose(expr->getLoc(), diag::character_literal_migration, type)
-//            .fixItReplaceChars(range.Start, range.End, "'" + body + "'");
-        }
+        migrateQuotes();
       }
 
       return convertLiteralInPlace(expr,

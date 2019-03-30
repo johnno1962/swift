@@ -268,6 +268,11 @@ extension Unicode.Scalar :
     return value <= 127
   }
 
+  @inlinable
+  public var ascii: UInt8 {
+    return UInt8(ascii: self)
+  }
+
   // FIXME: Unicode makes this interesting.
   internal var _isPrintableASCII: Bool {
     return (self >= Unicode.Scalar(0o040) && self <= Unicode.Scalar(0o176))
