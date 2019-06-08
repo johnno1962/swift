@@ -231,6 +231,96 @@ static bool canSkipCircularityCheck(NominalTypeDecl *decl) {
   return decl->hasClangNode() || decl->wasDeserialized();
 }
 
+/// Check that the declaration attributes are ok.
+static void validateAttributes(TypeChecker &TC, Decl *D);
+
+/// Check the inheritance clause of a type declaration or extension thereof.
+///
+/// This routine performs detailed checking of the inheritance clause of the
+/// given type or extension. It need only be called within the primary source
+/// file.
+static void checkInheritanceClause(
+                    llvm::PointerUnion<TypeDecl *, ExtensionDecl *> declUnion) {
+  DeclContext *DC;
+  MutableArrayRef<TypeLoc> inheritedClause;
+  ExtensionDecl *ext = nullptr;
+  TypeDecl *typeDecl = nullptr;
+  Decl *decl;
+  if ((ext = declUnion.dyn_cast<ExtensionDecl *>())) {
+    decl = ext;
+    DC = ext;
+
+    inheritedClause = ext->getInherited();
+    ASTContext &ctx = ext->getASTContext();
+
+    // Protocol extensions cannot have inheritance clauses.
+    if (auto proto = ext->getExtendedProtocolDecl()) {
+      for (unsigned i = 0, n = inheritedClause.size(); i != n; ++i) {
+
+        // Validate the type.
+        InheritedTypeRequest request{declUnion, i, TypeResolutionStage::Interface};
+        Type inheritedTy = evaluateOrDefault(ctx.evaluator, request, Type());
+
+        // If we couldn't resolve an the inherited type, or it contains an error,
+        // ignore it.
+        if (!inheritedTy || inheritedTy->hasError())
+          continue;
+
+        if (auto inheritedPr = dyn_cast_or_null<ProtocolDecl>(inheritedTy
+            ->getCanonicalType()->getNominalOrBoundGenericNominal())) {
+          std::vector<TypeLoc> Inherited = proto->getInherited();
+          Inherited.push_back(TypeLoc::withoutLoc(inheritedTy));
+          proto->setInherited(ctx.AllocateCopy(MutableArrayRef<TypeLoc>(Inherited)));
+
+          TypeChecker &TC = TypeChecker::createForContext(ctx);
+          auto lookupOptions = defaultMemberTypeLookupOptions;
+          lookupOptions -= NameLookupFlags::PerformConformanceCheck;
+          lookupOptions |= NameLookupFlags::IncludeAttributeImplements;
+
+          bool reported = false;
+          for (auto member : inheritedPr->getMembers()) {
+            if (auto requirement = dyn_cast<ValueDecl>(member)) {
+              auto candidates = TC.lookupMember(DC, ext->getExtendedType(),
+                                                requirement->getFullName(),
+                                                lookupOptions);
+              if (candidates.empty() &&
+                  requirement->getKind() != DeclKind::AssociatedType) {
+                if (!reported) {
+                  TC.diagnose(ext->getExtendedTypeLoc().getLoc(),
+                              diag::protocol_extension_does_not_conform,
+                              ext->getExtendedType(), inheritedTy);
+                  reported = true;
+                }
+                TC.diagnose(requirement, diag::no_witnesses,
+                            diag::RequirementKind::Func, requirement->getFullName(),
+                            requirement->getInterfaceType(), /*AddFixIt=*/true);
+              }
+            }
+          }
+
+          continue;
+        }
+
+        ext->diagnose(diag::extension_protocol_inheritance,
+                 proto->getName())
+          .highlight(SourceRange(inheritedClause.front().getSourceRange().Start,
+                                 inheritedClause.back().getSourceRange().End));
+      }
+      return;
+    }
+  } else {
+    typeDecl = declUnion.get<TypeDecl *>();
+    decl = typeDecl;
+    if (auto nominal = dyn_cast<NominalTypeDecl>(typeDecl)) {
+      DC = nominal;
+    } else {
+      DC = typeDecl->getDeclContext();
+    }
+
+    inheritedClause = typeDecl->getInherited();
+  }
+}
+
 llvm::Expected<bool>
 HasCircularInheritanceRequest::evaluate(Evaluator &evaluator,
                                         ClassDecl *decl) const {

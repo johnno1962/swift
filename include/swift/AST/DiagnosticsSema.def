@@ -1744,6 +1744,8 @@ NOTE(invalid_nominal_extension_rewrite,none,
 // Protocols
 ERROR(type_does_not_conform,none,
       "type %0 does not conform to protocol %1", (Type, Type))
+ERROR(protocol_extension_does_not_conform,none,
+      "extension of protocol %0 does not conform to protocol %1", (Type, Type))
 ERROR(cannot_use_nil_with_this_type,none,
       "'nil' cannot be used in context expecting type %0", (Type))
 

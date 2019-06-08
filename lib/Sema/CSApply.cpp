@@ -6400,10 +6400,20 @@ Expr *ExprRewriter::convertLiteralInPlace(Expr *literal,
   // Dig out the literal type and perform a builtin literal conversion to it.
   if (!literalType.empty()) {
     // Extract the literal type.
+#if 1
     Type builtinLiteralType =
         conformance.getTypeWitnessByName(type, literalType);
     if (builtinLiteralType->hasError())
+#else
+    Type builtinLiteralType = tc.getWitnessType(type, protocol, *conformance,
+                                                literalType,
+                                                brokenProtocolDiag);
+    if (!builtinLiteralType) {
+      tc.diagnose(literal->getLoc(), diag::type_does_not_conform,
+                  type, protocol->getDeclaredType());
+#endif
       return nullptr;
+    }
 
     // Perform the builtin conversion.
     if (!convertLiteralInPlace(literal, builtinLiteralType, nullptr,
