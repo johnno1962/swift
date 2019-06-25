@@ -2274,8 +2274,12 @@ class DeclDeserializer {
     auto inherited = ctx.AllocateCopy(inheritedTypes);
     if (auto *typeDecl = decl.dyn_cast<TypeDecl *>())
       typeDecl->setInherited(inherited);
-    else
-      decl.get<ExtensionDecl *>()->setInherited(inherited);
+    else {
+      ExtensionDecl *extension = decl.get<ExtensionDecl *>();
+      extension->setInherited(inherited);
+      if (auto extended = extension->getExtendedProtocolDecl())
+        extended->inheritedProtocolsChanged();
+    }
   }
 
 public:

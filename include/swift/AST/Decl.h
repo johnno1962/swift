@@ -3311,9 +3311,6 @@ class NominalTypeDecl : public GenericTypeDecl, public IterableDeclContext {
   /// a given nominal type.
   mutable ConformanceLookupTable *ConformanceTable = nullptr;
 
-  /// Prepare the conformance table.
-  void prepareConformanceTable() const;
-
   /// Returns the protocol requirements that \c Member conforms to.
   ArrayRef<ValueDecl *>
     getSatisfiedProtocolRequirementsForMember(const ValueDecl *Member,
@@ -3347,6 +3344,9 @@ protected:
   }
 
   friend class ProtocolType;
+
+  /// Prepare the conformance table.
+  ConformanceLookupTable *prepareConformanceTable() const;
 
 public:
   using GenericTypeDecl::getASTContext;
@@ -4258,6 +4258,9 @@ public:
 
     return const_cast<ProtocolDecl *>(this)->getInheritedProtocolsSlow();
   }
+
+  /// An extension has inherited a new protocol
+  void inheritedProtocolsChanged();
 
   /// Determine whether this protocol has a superclass.
   bool hasSuperclass() const { return (bool)getSuperclassDecl(); }

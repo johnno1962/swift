@@ -6408,12 +6408,15 @@ Expr *ExprRewriter::convertLiteralInPlace(Expr *literal,
     Type builtinLiteralType = tc.getWitnessType(type, protocol, *conformance,
                                                 literalType,
                                                 brokenProtocolDiag);
+//<<<<<<< HEAD
     if (!builtinLiteralType) {
       tc.diagnose(literal->getLoc(), diag::type_does_not_conform,
                   type, protocol->getDeclaredType());
 #endif
+//=======
+//    if (!builtinLiteralType)
+//>>>>>>> Working reasonably well
       return nullptr;
-    }
 
     // Perform the builtin conversion.
     if (!convertLiteralInPlace(literal, builtinLiteralType, nullptr,

@@ -139,6 +139,15 @@ void ConformanceLookupTable::destroy() {
   this->~ConformanceLookupTable();
 }
 
+void ConformanceLookupTable::invalidate() {
+  Conformances.clear();
+  LastProcessed.clear();
+  AllConformances.clear();
+  for (auto &extInfo : NotionalConformancesFromExtension)
+    for (auto &toInvalidate : extInfo.second)
+      toInvalidate.first->prepareConformanceTable()->invalidate();
+}
+
 namespace {
   using ConformanceConstructionInfo = Located<ProtocolDecl *>;
 }
@@ -272,7 +281,7 @@ void ConformanceLookupTable::updateLookupTable(NominalTypeDecl *nominal,
     forEachInStage(
         stage, nominal,
         [&](NominalTypeDecl *nominal) {
-          addInheritedProtocols(nominal,
+          addInheritedProtocols(nominal, nominal,
                                 ConformanceSource::forExplicit(nominal));
         },
         [&](ExtensionDecl *ext,
@@ -280,9 +289,13 @@ void ConformanceLookupTable::updateLookupTable(NominalTypeDecl *nominal,
           // The extension decl may not be validated, so we can't use
           // its inherited protocols directly.
           auto source = ConformanceSource::forExplicit(ext);
+//<<<<<<< HEAD
           for (auto locAndProto : protos)
             addProtocol(locAndProto.Item, locAndProto.Loc, source);
-        });
+//=======
+//          addInheritedProtocols(nominal, ext, source);
+//>>>>>>> Working reasonably well
+//        });
     break;
 
   case ConformanceStage::Inherited:
@@ -464,15 +477,47 @@ bool ConformanceLookupTable::addProtocol(ProtocolDecl *protocol, SourceLoc loc,
 }
 
 void ConformanceLookupTable::addInheritedProtocols(
+                          NominalTypeDecl *nominal,
                           llvm::PointerUnion<TypeDecl *, ExtensionDecl *> decl,
-                          ConformanceSource source) {
+                          ConformanceSource source, int depth) {
+  if (depth > 100) // Circularity diagnosed elsewhere
+    return;
   // Find all of the protocols in the inheritance list.
   bool anyObject = false;
   for (const auto &found :
           getDirectlyInheritedNominalTypeDecls(decl, anyObject)) {
+//<<<<<<< HEAD
     if (auto proto = dyn_cast<ProtocolDecl>(found.Item))
       addProtocol(proto, found.Loc, source);
+//=======
+//    if (auto proto = dyn_cast<ProtocolDecl>(found.second)) {
+//      for (auto ext : proto->getExtensions()) {
+//        if (ext->getInherited().empty())
+//          continue;
+//        for (const auto &found :
+//             getDirectlyInheritedNominalTypeDecls(ext, anyObject)) {
+//          if (auto proto2 = dyn_cast<ProtocolDecl>(found.second)) {
+////            fprintf(stderr, "  %s: %s: %s\n", nominal->getNameStr().str().c_str(), proto->getNameStr().str().c_str(), proto2->getNameStr().str().c_str());
+//            if (!isa<ProtocolDecl>(nominal))
+//              proto->prepareConformanceTable()
+//                   ->addWitnessRequirement(nominal, proto2, ext);
+//          }
+//        }
+//        addInheritedProtocols(nominal, ext, source, depth + 1);
+//      }
+//      addInheritedProtocols(nominal, proto, source, depth + 1);
+//      if (depth == 0)
+//        addProtocol(proto, found.first, source);
+//    }
+//>>>>>>> Working reasonably well
   }
+}
+
+void ConformanceLookupTable::addWitnessRequirement(NominalTypeDecl *nominal, ProtocolDecl *proto, ExtensionDecl *ext) {
+  NotionalConformancesFromExtension[ext][nominal][proto] = true;
+  auto table = nominal->prepareConformanceTable();
+  if (table->Conformances.find(proto) == table->Conformances.end())
+    table->addProtocol(proto, ext->getLoc(), ConformanceSource::forExplicit(nominal));
 }
 
 void ConformanceLookupTable::expandImpliedConformances(NominalTypeDecl *nominal,
@@ -504,7 +549,7 @@ void ConformanceLookupTable::expandImpliedConformances(NominalTypeDecl *nominal,
       }
     }
 
-    addInheritedProtocols(conformingProtocol,
+    addInheritedProtocols(nominal, conformingProtocol,
                           ConformanceSource::forImplied(conformanceEntry));
   }
 }
@@ -1037,6 +1082,27 @@ void ConformanceLookupTable::lookupConformances(
 
       // We have transferred these diagnostics; erase them.
       AllSupersededDiagnostics.erase(knownDiags);
+    }
+  }
+}
+
+void ConformanceLookupTable::addExtendedConformances(const ExtensionDecl *ext,
+                 SmallVectorImpl<ProtocolConformance *> &conformances) {
+  for (auto &nominalPair : NotionalConformancesFromExtension[ext]) {
+    NominalTypeDecl *nominal = nominalPair.first;
+    for (auto &protocolPair : nominalPair.second) {
+      ProtocolDecl *proto = protocolPair.first;
+      auto table = nominal->prepareConformanceTable();
+      auto entry = table->Conformances.find(proto);
+      if (entry == table->Conformances.end())
+        continue;
+      auto conformance = table->getConformance(nominal, entry->second.back());
+      // FIXME: Bit of a hack here to force the conformance to be "complete"
+      if (auto normal = dyn_cast<NormalProtocolConformance>(conformance))
+        if (!normal->getProtocol()->getInheritedProtocols().empty()) {
+          normal->setState(ProtocolConformanceState::Complete);
+          conformances.push_back(conformance);
+        }
     }
   }
 }
