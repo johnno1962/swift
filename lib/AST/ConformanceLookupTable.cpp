@@ -143,9 +143,8 @@ void ConformanceLookupTable::invalidate() {
   Conformances.clear();
   LastProcessed.clear();
   AllConformances.clear();
-  for (auto &extInfo : NotionalConformancesFromExtension)
-    for (auto &toInvalidate : extInfo.second)
-      toInvalidate.first->prepareConformanceTable()->invalidate();
+  for (auto &toInvalidate : NotionalConformancesFromExtension)
+    toInvalidate.first->prepareConformanceTable()->invalidate();
 }
 
 namespace {
@@ -550,7 +549,7 @@ void ConformanceLookupTable::addInheritedProtocols(
 
 void ConformanceLookupTable::addWitnessRequirement(NominalTypeDecl *nominal,
                             ProtocolDecl *inheritedProto, ExtensionDecl *ext) {
-  NotionalConformancesFromExtension[ext][nominal][inheritedProto] = true;
+  NotionalConformancesFromExtension[nominal][inheritedProto] = true;
   auto table = nominal->prepareConformanceTable();
   if (table->Conformances.find(inheritedProto) == table->Conformances.end())
     table->addProtocol(inheritedProto, ext->getLoc(),
@@ -1123,9 +1122,9 @@ void ConformanceLookupTable::lookupConformances(
   }
 }
 
-void ConformanceLookupTable::addExtendedConformances(const ExtensionDecl *ext,
+void ConformanceLookupTable::addExtendedConformances(
                  SmallVectorImpl<ProtocolConformance *> &conformances) {
-  for (auto &nominalPair : NotionalConformancesFromExtension[ext]) {
+  for (auto &nominalPair : NotionalConformancesFromExtension) {
     NominalTypeDecl *nominal = nominalPair.first;
     for (auto &protocolPair : nominalPair.second) {
       ProtocolDecl *proto = protocolPair.first;
