@@ -1953,6 +1953,8 @@ void IRGenModule::emitProtocolConformance(
           getAddrOfProtocolConformanceDescriptor(conformance,
                                                  init.finishAndCreateFuture()));
   var->setConstant(true);
+  if (record.wtable->getLinkage() == SILLinkage::Private)
+    var->setLinkage(llvm::GlobalVariable::LinkageTypes::PrivateLinkage);
   setTrueConstGlobal(var);
 }
 
@@ -2159,6 +2161,8 @@ void IRGenModule::emitSILWitnessTable(SILWitnessTable *wt) {
     global->setConstant(isConstantWitnessTable(wt));
     global->setAlignment(getWitnessTableAlignment().getValue());
     tableSize = wtableBuilder.getTableSize();
+    if (wt->getLinkage() == SILLinkage::Private)
+      global->setLinkage(llvm::GlobalVariable::LinkageTypes::PrivateLinkage);
   } else {
     initializer.abandon();
     tableSize = 0;

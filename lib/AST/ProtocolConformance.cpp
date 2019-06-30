@@ -1356,7 +1356,7 @@ DeclContext::getLocalProtocols(
 SmallVector<ProtocolConformance *, 2>
 DeclContext::getLocalConformances(
   ConformanceLookupKind lookupKind,
-  SmallVectorImpl<ConformanceDiagnostic> *diagnostics, bool addExtended) const
+  SmallVectorImpl<ConformanceDiagnostic> *diagnostics) const
 {
   SmallVector<ProtocolConformance *, 2> result;
 
@@ -1368,9 +1368,8 @@ DeclContext::getLocalConformances(
   // Protocols only have self-conformances.
   if (auto protocol = dyn_cast<ProtocolDecl>(nominal)) {
     if (protocol->requiresSelfConformanceWitnessTable())
-      result.push_back(protocol->getASTContext().getSelfConformance(protocol));
-    if (!addExtended)
-      return result;
+      return { protocol->getASTContext().getSelfConformance(protocol) };
+    return { };
   }
 
   // Update to record all potential conformances.
@@ -1382,11 +1381,6 @@ DeclContext::getLocalConformances(
     nullptr,
     &result,
     diagnostics);
-
-  if (addExtended)
-    if (auto ext = dyn_cast_or_null<ExtensionDecl>(this))
-      if (auto proto = ext->getExtendedProtocolDecl())
-        proto->prepareConformanceTable()->addExtendedConformances(ext, result);
 
   return result;
 }

@@ -297,6 +297,9 @@ public:
       llvm::SmallPtrSet<DerivativeAttr *, 1>>
       DerivativeAttrs;
 
+  /// Track extensions that inherit for inheriting protocol extensions.
+  mutable llvm::DenseMap<ExtensionDecl *, bool> InheritingExtensions;
+
 private:
   /// The current generation number, which reflects the number of
   /// times that external modules have been loaded.

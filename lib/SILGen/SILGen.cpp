@@ -40,6 +40,7 @@
 #include "swift/Subsystems.h"
 #include "llvm/ProfileData/InstrProfReader.h"
 #include "llvm/Support/Debug.h"
+#include "../AST/ConformanceLookupTable.h"
 using namespace swift;
 using namespace Lowering;
 
@@ -1682,6 +1683,19 @@ void SILGenModule::emitSourceFile(SourceFile *sf) {
     if (TD->getDeclContext()->getInnermostSkippedFunctionContext())
       continue;
     visit(TD);
+  }
+
+  for (auto pair : getASTContext().InheritingExtensions) {
+    ExtensionDecl *ext = pair.first;
+    if (ProtocolDecl *proto = ext->getExtendedProtocolDecl()) {
+      SmallVector<ProtocolConformance *, 2> result;
+      proto->prepareConformanceTable()->addExtendedConformances(ext, result);
+      for (auto conformance : result) {
+        if (conformance->isComplete())
+          if (auto *normal = dyn_cast<NormalProtocolConformance>(conformance))
+            getWitnessTable(normal, /*emitAsPrivate*/true);
+      }
+    }
   }
 }
 
