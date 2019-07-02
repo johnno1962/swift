@@ -139,13 +139,18 @@ void ConformanceLookupTable::destroy() {
   this->~ConformanceLookupTable();
 }
 
-void ConformanceLookupTable::invalidate() {
+void ConformanceLookupTable::invalidate(NominalTypeDecl *recurse) {
+  for (auto &extInfo : NotionalConformancesFromExtension)
+    for (auto &toInvalidate : extInfo.second)
+      toInvalidate.first->ConformanceTable = nullptr;
+
+  if (recurse) {
+    recurse->ConformanceTable = nullptr;
+    return;
+  }
   Conformances.clear();
   LastProcessed.clear();
   AllConformances.clear();
-  for (auto &extInfo : NotionalConformancesFromExtension)
-    for (auto &toInvalidate : extInfo.second)
-      toInvalidate.first->prepareConformanceTable()->invalidate();
 }
 
 namespace {
@@ -490,12 +495,23 @@ void ConformanceLookupTable::addInheritedProtocols(
                           Propagator *propagator) {
   if (depth > 100) // Circularity diagnosed elsewhere
     return;
+  ExtensionDecl *ext = decl.dyn_cast<ExtensionDecl *>();
+  ProtocolDecl *proto = ext ? ext->getExtendedProtocolDecl() :
+    dyn_cast_or_null<ProtocolDecl>(decl.dyn_cast<TypeDecl *>());
+  // Prepare closure to register inherited protocols against extending.
+  Propagator protoPropagator = [&](ProtocolDecl *inheritedProto) {
+    if (proto) {
+      proto->prepareConformanceTable()
+        ->addWitnessRequirement(nominal, inheritedProto, ext);
+      // Continue propagating up stack.
+    }
+    if (propagator)
+      (*propagator)(inheritedProto);
+  };
   // Find all of the protocols in the inheritance list.
   bool anyObject = false;
   for (const auto &found :
-//<<<<<<< HEAD
           getDirectlyInheritedNominalTypeDecls(decl, anyObject)) {
-//<<<<<<< HEAD
     if (auto proto = dyn_cast<ProtocolDecl>(found.Item))
       addProtocol(proto, found.Loc, source);
 //=======
@@ -545,15 +561,32 @@ void ConformanceLookupTable::addInheritedProtocols(
 //    if (propagator)
 //      (*propagator)(proto);
 //>>>>>>> Re-write to cater for more variations.
-  }
-}
+//=======
+//          getDirectlyInheritedNominalTypeDecls(decl, anyObject))
+//    addInheritedProtocols(nominal, found.second, source,
+//                          depth + 1, found.first, &protoPropagator);
+//
+//  if (auto proto = dyn_cast_or_null<ProtocolDecl>(decl.dyn_cast<TypeDecl *>())) {
+//    for (ExtensionDecl *ext : proto->getExtensions()) {
+//      if (ext->getInherited().empty())
+//        continue;
+//      addInheritedProtocols(nominal, ext, source, depth,
+//                            ext->getLoc(), &protoPropagator);
+//    }
+//    if (depth == 1)
+//      addProtocol(proto, loc, source);
+//    if (propagator)
+//      (*propagator)(proto);
+//>>>>>>> Access through protocol
+//  }
+//}
 
 void ConformanceLookupTable::addWitnessRequirement(NominalTypeDecl *nominal,
                             ProtocolDecl *inheritedProto, ExtensionDecl *ext) {
   NotionalConformancesFromExtension[ext][nominal][inheritedProto] = true;
   auto table = nominal->prepareConformanceTable();
-  if (table->Conformances.find(inheritedProto) == table->Conformances.end())
-    table->addProtocol(inheritedProto, ext->getLoc(),
+  if (ext && table->Conformances.find(inheritedProto) == table->Conformances.end())
+    table->addProtocol(inheritedProto, ext ? ext->getLoc() : nominal->getLoc(),
                        ConformanceSource::forExplicit(nominal));
 }
 
