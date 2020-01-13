@@ -515,6 +515,7 @@ void ConformanceLookupTable::addInheritedProtocols(
           getDirectlyInheritedNominalTypeDecls(decl, anyObject)) {
     if (auto proto = dyn_cast<ProtocolDecl>(found.Item))
       addProtocol(proto, found.Loc, source);
+  }
 //=======
 //    if (auto proto = dyn_cast<ProtocolDecl>(found.second)) {
 //      for (auto ext : proto->getExtensions()) {

@@ -6417,6 +6417,7 @@ Expr *ExprRewriter::convertLiteralInPlace(Expr *literal,
 //    if (!builtinLiteralType)
 //>>>>>>> Working reasonably well
       return nullptr;
+    }
 
     // Perform the builtin conversion.
     if (!convertLiteralInPlace(literal, builtinLiteralType, nullptr,

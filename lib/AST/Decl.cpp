@@ -4572,6 +4572,8 @@ ProtocolDecl::getInheritedProtocolsSlow() {
     if (auto proto = dyn_cast<ProtocolDecl>(found.Item)) {
       if (known.insert(proto).second)
         result.push_back(proto);
+    }
+  }
 //=======
 //  auto enumerateInherited = [&] (llvm::PointerUnion<TypeDecl *,
 //                                 ExtensionDecl *> decl) {
@@ -4584,10 +4586,10 @@ ProtocolDecl::getInheritedProtocolsSlow() {
 //>>>>>>> Working reasonably well
 //    }
 //  };
-
-  enumerateInherited(this);
-  for (auto ext : getExtensions())
-      enumerateInherited(ext);
+//
+//  enumerateInherited(this);
+//  for (auto ext : getExtensions())
+//      enumerateInherited(ext);
 
   auto &ctx = getASTContext();
   InheritedProtocols = ctx.AllocateCopy(result);

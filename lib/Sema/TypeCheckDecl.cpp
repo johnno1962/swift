@@ -255,13 +255,13 @@ static void checkInheritanceClause(
 
     // Protocol extensions cannot have inheritance clauses.
     if (auto proto = ext->getExtendedProtocolDecl()) {
-      TypeChecker &TC = TypeChecker::createForContext(ctx);
-      auto lookupOptions = defaultMemberTypeLookupOptions;
-      lookupOptions -= NameLookupFlags::PerformConformanceCheck;
-      lookupOptions |= NameLookupFlags::IncludeAttributeImplements;
-
-      if (!inheritedClause.empty())
-        proto->inheritedProtocolsChanged();
+//      TypeChecker &TC = TypeChecker::createForContext(ctx);
+//      auto lookupOptions = defaultMemberTypeLookupOptions;
+//      lookupOptions -= NameLookupFlags::PerformConformanceCheck;
+//      lookupOptions |= NameLookupFlags::IncludeAttributeImplements;
+//
+//      if (!inheritedClause.empty())
+//        proto->inheritedProtocolsChanged();
 
       for (unsigned i = 0, n = inheritedClause.size(); i != n; ++i) {
 
