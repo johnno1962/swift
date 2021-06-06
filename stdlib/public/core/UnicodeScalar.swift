@@ -530,3 +530,74 @@ extension Unicode.Scalar {
   }
 }
 
+// Interoperability with FixedWidthIntegers.
+
+extension FixedWidthInteger {
+  /// Construct any FixedWidthInteger with value `v.value`.
+  ///
+  /// - Precondition: `v.value` can be represented as ASCII (0..<128).
+  @inlinable
+  @available(swift 5.1)
+  public init(ascii v: Unicode.Scalar) {
+    _precondition(v.value < 128,
+                  "Code point value does not fit into ASCII")
+    self = Self(v.value)
+  }
+}
+
+extension RangeReplaceableCollection where Element: FixedWidthInteger {
+  /// Construct array of FixedWidthIntegers with asciiValues in String `v`.
+  ///
+  /// - Precondition: all characters in `v` must be in the ASCII range.
+  @available(swift 5.1)
+  public init(ascii v: String) {
+    self.init(v.utf8.map {
+        guard $0 < 128 else {
+            _preconditionFailure("Only ASCII strings accepted in this context")
+        }
+        return Element($0)
+    })
+  }
+}
+
+// In the following operators the Unicode.Scalar is generally a literal.
+
+extension Unicode.Scalar {
+  /// Find the difference between a FixedWidthInteger and a Unicode.Scalar.
+  ///
+  /// - Precondition: `rhs.value` can be represented as ASCII (0..<128).
+  @_transparent
+  @available(swift 5.1)
+  public static func -<T: FixedWidthInteger> (lhs: T, rhs: Unicode.Scalar) -> T {
+    _precondition(rhs.isASCII, "Only ASCII Unicode.Scalar accepted in this context")
+    return lhs - T(rhs.value)
+  }
+  /// Compare a FixedWidthInteger to a Unicode.Scalar.
+  ///
+  /// - Precondition: `rhs.value` can be represented as ASCII (0..<128).
+  @_transparent
+  @available(swift 5.1)
+  public static func ==<T: FixedWidthInteger> (lhs: T?, rhs: Unicode.Scalar) -> Bool {
+    _precondition(rhs.isASCII, "Only ASCII Unicode.Scalar accepted in this context")
+    return lhs == T(rhs.value)
+  }
+  /// Compare Unicode.Scalar pattern to a FixedWidthInteger in a 'switch'.
+  ///
+  /// - Precondition: `pattern.value` can be represented as ASCII (0..<128).
+  @_transparent
+  @available(swift 5.1)
+  public static func ~=<T: FixedWidthInteger> (pattern: Unicode.Scalar, value: T) -> Bool {
+    _precondition(pattern.isASCII, "Only ASCII Unicode.Scalar accepted in this context")
+    return value == T(pattern.value)
+  }
+}
+
+/// Determine if Unicode.Scalar range contains a FixedWidthInteger in a 'switch'.
+///
+/// - Precondition: pattern bounds can only be represented as ASCII (0..<128).
+@available(swift 5.1)
+public func ~=<T: FixedWidthInteger> (pattern: ClosedRange<Unicode.Scalar>, value: T) -> Bool {
+  _precondition(pattern.lowerBound.isASCII && pattern.upperBound.isASCII,
+                "Only ASCII Unicode.Scalar range accepted in this context")
+  return pattern.contains(Unicode.Scalar(UInt32(value))!)
+}
