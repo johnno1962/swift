@@ -1226,6 +1226,21 @@ void SILGenModule::postEmitFunction(SILDeclRef constant,
   F->verify();
 
   emitDifferentiabilityWitnessesForFunction(constant, F);
+  if (!constant.hasDecl()) return;
+  if (auto AF = dyn_cast<AbstractFunctionDecl>(constant.getDecl()))
+    for (auto p : *AF->getParameters()) {
+      if (!p->getStartLoc().isValid()) continue;
+      auto bufferID = getASTContext().SourceMgr.findBufferContainingLoc(p->getStartLoc());
+      auto buffStart = getASTContext().SourceMgr.getRangeForBuffer(bufferID).getStart();
+      llvm::outs() << "ARGG:\t" << getASTContext().SourceMgr.getLLVMSourceMgr()
+        .getMemoryBuffer(bufferID)->getBufferIdentifier() << "\t" <<
+        p->getArgumentName() << " " << p->getParameterName() << "\t" <<
+        (const char *)p->getStartLoc().getOpaquePointerValue() -
+        (const char *)buffStart.getOpaquePointerValue() << "," <<
+        (const char *)p->getEndLoc().getOpaquePointerValue() -
+        (const char *)buffStart.getOpaquePointerValue() << "\t";
+      p->getType()->dump(llvm::outs());
+    }
 }
 
 void SILGenModule::emitDifferentiabilityWitnessesForFunction(
