@@ -278,7 +278,8 @@ public:
   }
   /// Set characteristics of string literal token.
   void setStringLiteral(bool IsMultilineString, unsigned CustomDelimiterLen) {
-    assert(Kind == tok::string_literal);
+    assert(Kind == tok::string_literal ||
+           Kind == tok::regex_literal);
     this->MultilineString = IsMultilineString;
     this->CustomDelimiterLen = CustomDelimiterLen;
   }

@@ -313,7 +313,8 @@ static void validateMultilineIndents(const Token &Str, DiagnosticEngine *Diags);
 void Lexer::formStringLiteralToken(const char *TokStart,
                                    bool IsMultilineString,
                                    unsigned CustomDelimiterLen) {
-  formToken(tok::string_literal, TokStart);
+  formToken(TokStart[CustomDelimiterLen] == '/' ?
+            tok::regex_literal : tok::string_literal, TokStart);
   if (NextToken.is(tok::eof))
     return;
   NextToken.setStringLiteral(IsMultilineString, CustomDelimiterLen);
@@ -1256,7 +1257,8 @@ static unsigned advanceIfCustomDelimiter(const char *&CurPtr,
   unsigned CustomDelimiterLen = 1;
   while (diagnoseZeroWidthMatchAndAdvance('#', TmpPtr, Diags))
     CustomDelimiterLen++;
-  if (diagnoseZeroWidthMatchAndAdvance('"', TmpPtr, Diags)) {
+  if (diagnoseZeroWidthMatchAndAdvance('"', TmpPtr, Diags) ||
+      diagnoseZeroWidthMatchAndAdvance('/', TmpPtr, Diags)) {
     CurPtr = TmpPtr;
     return CustomDelimiterLen;
   }
@@ -1294,6 +1296,7 @@ static bool delimiterMatches(unsigned CustomDelimiterLen, const char *&BytesPtr,
 /// advanceIfMultilineDelimiter - Centralized check for multiline delimiter.
 static bool advanceIfMultilineDelimiter(unsigned CustomDelimiterLen,
                                         const char *&CurPtr,
+                                        char QuoteChar,
                                         DiagnosticEngine *Diags,
                                         bool IsOpening = false) {
 
@@ -1301,7 +1304,7 @@ static bool advanceIfMultilineDelimiter(unsigned CustomDelimiterLen,
   const char *TmpPtr = CurPtr + 1;
   if (IsOpening && CustomDelimiterLen) {
     while (*TmpPtr != '\r' && *TmpPtr != '\n') {
-      if (*TmpPtr == '"') {
+      if (*TmpPtr == QuoteChar) {
         if (delimiterMatches(CustomDelimiterLen, ++TmpPtr, nullptr)) {
           return false;
         }
@@ -1312,9 +1315,9 @@ static bool advanceIfMultilineDelimiter(unsigned CustomDelimiterLen,
   }
 
   TmpPtr = CurPtr;
-  if (*(TmpPtr - 1) == '"' &&
-      diagnoseZeroWidthMatchAndAdvance('"', TmpPtr, Diags) &&
-      diagnoseZeroWidthMatchAndAdvance('"', TmpPtr, Diags)) {
+  if (*(TmpPtr - 1) == QuoteChar &&
+        diagnoseZeroWidthMatchAndAdvance(QuoteChar, TmpPtr, Diags) &&
+        diagnoseZeroWidthMatchAndAdvance(QuoteChar, TmpPtr, Diags)) {
     CurPtr = TmpPtr;
     return true;
   }
@@ -1354,10 +1357,11 @@ unsigned Lexer::lexCharacter(const char *&CurPtr, char StopQuote,
     return ~1U;
   }
   case '"':
+  case '/':
   case '\'':
     if (CurPtr[-1] == StopQuote) {
       // Multiline and custom escaping are only enabled for " quote.
-      if (LLVM_UNLIKELY(StopQuote != '"'))
+      if (LLVM_UNLIKELY(StopQuote != '"' && StopQuote != '/'))
         return ~0U;
       if (!IsMultilineString && !CustomDelimiterLen)
         return ~0U;
@@ -1365,11 +1369,11 @@ unsigned Lexer::lexCharacter(const char *&CurPtr, char StopQuote,
       DiagnosticEngine *D = EmitDiagnostics ? getTokenDiags() : nullptr;
       auto TmpPtr = CurPtr;
       if (IsMultilineString &&
-          !advanceIfMultilineDelimiter(CustomDelimiterLen, TmpPtr, D))
-        return '"';
+          !advanceIfMultilineDelimiter(CustomDelimiterLen, TmpPtr, StopQuote, D))
+        return StopQuote;
       if (CustomDelimiterLen &&
           !delimiterMatches(CustomDelimiterLen, TmpPtr, D, /*IsClosing=*/true))
-        return '"';
+        return StopQuote;
       CurPtr = TmpPtr;
       return ~0U;
     }
@@ -1501,9 +1505,8 @@ static const char *skipToEndOfInterpolatedExpression(const char *CurPtr,
       if (!inStringLiteral()) {
         // Open string literal.
         OpenDelimiters.push_back(CurPtr[-1]);
-        AllowNewline.push_back(advanceIfMultilineDelimiter(CustomDelimiterLen,
-                                                           CurPtr, nullptr,
-                                                           true));
+        AllowNewline.push_back(advanceIfMultilineDelimiter(
+            CustomDelimiterLen, CurPtr, '"', nullptr, true));
         CustomDelimiter.push_back(CustomDelimiterLen);
         continue;
       }
@@ -1516,7 +1519,7 @@ static const char *skipToEndOfInterpolatedExpression(const char *CurPtr,
 
       // Multi-line string can only be closed by '"""'.
       if (AllowNewline.back() &&
-          !advanceIfMultilineDelimiter(CustomDelimiterLen, CurPtr, nullptr))
+          !advanceIfMultilineDelimiter(CustomDelimiterLen, CurPtr, '"', nullptr))
         continue;
 
       // Check whether we have equivalent number of '#'s.
@@ -1852,10 +1855,10 @@ void Lexer::lexStringLiteral(unsigned CustomDelimiterLen) {
 
   // NOTE: We only allow single-quote string literals so we can emit useful
   // diagnostics about changing them to double quotes.
-  assert((QuoteChar == '"' || QuoteChar == '\'') && "Unexpected start");
+  assert((QuoteChar == '"' || QuoteChar == '/' || QuoteChar == '\'') && "Unexpected start");
 
   bool IsMultilineString = advanceIfMultilineDelimiter(
-      CustomDelimiterLen, CurPtr, getTokenDiags(), true);
+       CustomDelimiterLen, CurPtr, QuoteChar, Diags, true);
   if (IsMultilineString && *CurPtr != '\n' && *CurPtr != '\r')
     diagnose(CurPtr, diag::lex_illegal_multiline_string_start)
         .fixItInsert(Lexer::getSourceLoc(CurPtr), "\n");
@@ -2525,7 +2528,7 @@ void Lexer::getStringLiteralSegments(
               const Token &Str,
               SmallVectorImpl<StringSegment> &Segments,
               DiagnosticEngine *Diags) {
-  assert(Str.is(tok::string_literal));
+  assert(Str.isAny(tok::string_literal, tok::regex_literal));
   // Get the bytes behind the string literal, dropping any double quotes.
   StringRef Bytes = getStringLiteralContent(Str);
 
