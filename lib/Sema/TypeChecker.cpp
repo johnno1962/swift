@@ -103,7 +103,8 @@ ProtocolDecl *TypeChecker::getLiteralProtocol(ASTContext &Context, Expr *expr) {
   if (const auto *SLE = dyn_cast<StringLiteralExpr>(expr)) {
     if (SLE->isSingleUnicodeScalar())
       return TypeChecker::getProtocol(
-          Context, expr->getLoc(),
+          Context, expr->getLoc(), SLE->getValue().size() == 1 ?
+          KnownProtocolKind::ExpressibleByASCIIScalarLiteral :
           KnownProtocolKind::ExpressibleByUnicodeScalarLiteral);
 
     if (SLE->isSingleExtendedGraphemeCluster())
