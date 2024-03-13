@@ -396,9 +396,8 @@ extension FixedWidthInteger {
   /// - Parameter unicode: The Unicode scalar to initialize from.
   /// - Note: Construct with value `v.value`.
   @inlinable @_alwaysEmitIntoClient
-  public init(unicode v: Unicode.Scalar) {
-    _precondition(v.value <= Self.max,
-                  "Code point value does not fit into type")
+  public init?(unicode v: Unicode.Scalar) {
+    guard v.value <= Self.max else { return nil }
     self = Self(v.value)
   }
 }

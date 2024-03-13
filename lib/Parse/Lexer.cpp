@@ -19,6 +19,7 @@
 #include "swift/AST/Identifier.h"
 #include "swift/Basic/LangOptions.h"
 #include "swift/Basic/SourceManager.h"
+#include "swift/Basic/Unicode.h"
 #include "swift/Bridging/ASTGen.h"
 #include "swift/Parse/Confusables.h"
 #include "llvm/ADT/SmallString.h"
@@ -1911,8 +1912,9 @@ void Lexer::lexStringLiteral(unsigned CustomDelimiterLen) {
     wasErroneous |= CharValue == ~1U;
   }
 
-  if (QuoteChar == '\'' && !(CurPtr - TokStart == 3 &&
-         !IsMultilineString && CustomDelimiterLen == 0 )) {
+  if (QuoteChar == '\'' && !(CurPtr-TokStart == 4 && TokStart[1] == '\\') &&
+    !unicode::isSingleExtendedGraphemeCluster(StringRef(TokStart+1, CurPtr-TokStart-2))) {
+    diagnose(TokStart, diag::lex_single_quote_character);
     assert(!IsMultilineString && CustomDelimiterLen == 0 &&
            "Single quoted string cannot have custom delimiter, nor multiline");
     diagnoseSingleQuoteStringLiteral(TokStart, CurPtr);

@@ -5,6 +5,6 @@
 
 _ = [(Int) -> async throws Int]()
 // expected-error@-1{{'async throws' must precede '->'}}
-// expected-note@-2{{move 'async throws' in front of '->'}}{{21-28=}} {{12-12=throws }}
+// expected-note@-2{{move 'async throws' in front of '->'}}{{15-21=}} {{21-28=}} {{20-21= }} {{12-12=async }} {{12-12=throws }}
 // expected-error@-3{{'async' may only occur before '->'}}
 // expected-error@-4{{'throws' may only occur before '->'}}

@@ -103,8 +103,9 @@ ProtocolDecl *TypeChecker::getLiteralProtocol(ASTContext &Context, Expr *expr) {
   if (const auto *SLE = dyn_cast<StringLiteralExpr>(expr)) {
     if (SLE->isSingleUnicodeScalar())
       return TypeChecker::getProtocol(
-          Context, expr->getLoc(), SLE->getValue().size() == 1 &&
-                              SLE->getValue().data()[-1] == '\'' ?
+          Context, expr->getLoc(),
+          SLE->getValue().size() == 1 && SLE->getSourceRange().Start.isValid() &&
+          *(char *)SLE->getSourceRange().Start.getOpaquePointerValue() == '\'' ?
           KnownProtocolKind::ExpressibleByASCIIScalarLiteral :
           KnownProtocolKind::ExpressibleByUnicodeScalarLiteral);
 
