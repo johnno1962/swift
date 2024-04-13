@@ -152,9 +152,9 @@ public typealias FloatLiteralType = Double
 /// `ExpressibleByBooleanLiteral` protocol.
 public typealias BooleanLiteralType = Bool
 
-/// The default type for an otherwise-unconstrained single quoted ASCII literal..
+/// The default type for an otherwise-unconstrained single quoted literal..
 @_unavailableInEmbedded
-public typealias ASCIIScalarType = Unicode.Scalar
+public typealias SingleQuotedType = Unicode.Scalar
 /// The default type for an otherwise-unconstrained unicode scalar literal.
 @_unavailableInEmbedded
 public typealias UnicodeScalarType = String
