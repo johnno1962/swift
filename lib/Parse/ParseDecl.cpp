@@ -235,7 +235,7 @@ void Parser::parseTopLevelItems(SmallVectorImpl<ASTNode> &items) {
     }
   }
 
-#if SWIFT_BUILD_SWIFT_SYNTAX
+#if SWIFT_BUILD_SWIFT_SYNTAX && 0
   if (existingParsingTransaction)
     existingParsingTransaction->abort();
 

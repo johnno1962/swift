@@ -380,6 +380,28 @@ extension UInt64 {
   }
 }
 
+extension UInt8: ExpressibleByASCIIScalarLiteral,
+  _ExpressibleByBuiltinUnicodeScalarLiteral {
+
+  @_transparent @_alwaysEmitIntoClient
+  public init(_builtinUnicodeScalarLiteral value: Builtin.Int32) {
+    self = UInt8(UInt32(value))
+  }
+}
+
+/// Extends `FixedWidthInteger` providing initialization from a Unicode scalar.
+extension FixedWidthInteger {
+  /// Initializes a FixedWidthInteger with the value of the provided Unicode scalar.
+  ///
+  /// - Parameter unicode: The Unicode scalar to initialize from.
+  /// - Note: Construct with value `v.value`.
+  @inlinable @_alwaysEmitIntoClient
+  public init?(unicode v: Unicode.Scalar) {
+    guard v.value <= Self.max else { return nil }
+    self = Self(v.value)
+  }
+}
+
 extension Unicode.Scalar: Equatable {
   @inlinable
   public static func == (lhs: Unicode.Scalar, rhs: Unicode.Scalar) -> Bool {

@@ -394,6 +394,10 @@ public protocol ExpressibleByBooleanLiteral {
   init(booleanLiteral value: BooleanLiteralType)
 }
 
+/// Used to differentiate string literals containing only a single ASCII character
+@_marker public protocol ExpressibleByASCIIScalarLiteral {}
+@_marker public protocol ExpressibleBySingleQuotedLiteral: ExpressibleByASCIIScalarLiteral {}
+
 public protocol _ExpressibleByBuiltinUnicodeScalarLiteral {
   init(_builtinUnicodeScalarLiteral value: Builtin.Int32)
 }
@@ -415,7 +419,7 @@ public protocol _ExpressibleByBuiltinUnicodeScalarLiteral {
 ///
 /// To add `ExpressibleByUnicodeScalarLiteral` conformance to your custom type,
 /// implement the required initializer.
-public protocol ExpressibleByUnicodeScalarLiteral {
+public protocol ExpressibleByUnicodeScalarLiteral: ExpressibleBySingleQuotedLiteral {
   /// A type that represents a Unicode scalar literal.
   ///
   /// Valid types for `UnicodeScalarLiteralType` are `Unicode.Scalar`,

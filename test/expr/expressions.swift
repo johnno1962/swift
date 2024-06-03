@@ -509,24 +509,35 @@ func stringliterals(_ d: [String: Int]) {
 
 func testSingleQuoteStringLiterals() {
   _ = 'abc' // expected-error{{single-quoted string literal found, use '"'}}{{7-12="abc"}}
+    // expected-error@-1{{single-quoted string not single Character}}
   _ = 'abc' + "def" // expected-error{{single-quoted string literal found, use '"'}}{{7-12="abc"}}
+    // expected-error@-1{{single-quoted string not single Character}}
 
   _ = 'ab\nc' // expected-error{{single-quoted string literal found, use '"'}}{{7-14="ab\\nc"}}
+    // expected-error@-1{{single-quoted string not single Character}}
 
   _ = "abc\('def')" // expected-error{{single-quoted string literal found, use '"'}}{{13-18="def"}}
+    // expected-error@-1{{single-quoted string not single Character}}
   _ = 'ab\("c")' // expected-error{{single-quoted string literal found, use '"'}}{{7-17="ab\\("c")"}}
+    // expected-error@-1{{single quoted literal cannot contain interpolations}}
+    // expected-error@-2{{single-quoted string not single Character}}
   _ = 'a\('b')c' // expected-error{{single-quoted string literal found, use '"'}}{{7-17="a\\('b')c"}}
-                 // expected-error@-1{{single-quoted string literal found, use '"'}}{{11-14="b"}}
+    // expected-error@-1{{single quoted literal cannot contain interpolations}}
+    // expected-error@-2{{single-quoted string not single Character}}
 
   _ = "abc' // expected-error{{unterminated string literal}}
   _ = 'abc" // expected-error{{unterminated string literal}}
   _ = "a'c"
 
   _ = 'ab\'c' // expected-error{{single-quoted string literal found, use '"'}}{{7-14="ab'c"}}
+    // expected-error@-1{{single-quoted string not single Character}}
 
   _ = 'ab"c' // expected-error{{single-quoted string literal found, use '"'}}{{7-13="ab\\"c"}}
+    // expected-error@-1{{single-quoted string not single Character}}
   _ = 'ab\"c' // expected-error{{single-quoted string literal found, use '"'}}{{7-14="ab\\"c"}}
+    // expected-error@-1{{single-quoted string not single Character}}
   _ = 'ab\\"c' // expected-error{{single-quoted string literal found, use '"'}}{{7-15="ab\\\\\\"c"}}
+      // expected-error@-1{{single-quoted string not single Character}}
 }
 
 // <rdar://problem/17128913>

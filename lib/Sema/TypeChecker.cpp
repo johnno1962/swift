@@ -104,6 +104,9 @@ ProtocolDecl *TypeChecker::getLiteralProtocol(ASTContext &Context, Expr *expr) {
     if (SLE->isSingleUnicodeScalar())
       return TypeChecker::getProtocol(
           Context, expr->getLoc(),
+          SLE->isSingleQuoted() ? SLE->getValue().data()[0] >= 0 ?
+          KnownProtocolKind::ExpressibleByASCIIScalarLiteral :
+          KnownProtocolKind::ExpressibleBySingleQuotedLiteral :
           KnownProtocolKind::ExpressibleByUnicodeScalarLiteral);
 
     if (SLE->isSingleExtendedGraphemeCluster())

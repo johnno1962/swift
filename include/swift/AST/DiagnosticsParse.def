@@ -112,6 +112,8 @@ ERROR(lex_invalid_utf8,none,
 
 ERROR(lex_single_quote_string,none,
       "single-quoted string literal found, use '\"'", ())
+ERROR(lex_single_quote_character,none,
+      "single-quoted string not single Character", ())
 ERROR(lex_invalid_curly_quote,none,
       "unicode curly quote found, replace with '\"'", ())
 NOTE(lex_confusable_character,none,
@@ -138,6 +140,8 @@ ERROR(lex_invalid_escape_delimiter,none,
       "too many '#' characters in delimited escape", ())
 ERROR(lex_invalid_closing_delimiter,none,
       "too many '#' characters in closing delimiter", ())
+ERROR(single_quoted_segmented,none,
+      "single quoted literal cannot contain interpolations", ())
 
 ERROR(lex_regex_literal_invalid_starting_char,none,
       "regex literal may not start with %0; add backslash to escape",
